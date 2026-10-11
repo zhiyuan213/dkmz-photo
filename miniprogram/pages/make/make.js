@@ -1,7 +1,6 @@
 const specs = require('../../utils/specs');
 const matting = require('../../utils/matting');
 const pipeline = require('../../utils/pipeline');
-const beauty = require('../../utils/beauty');
 
 const RESULT_KEY = 'dkmz_last_result';
 
@@ -17,9 +16,6 @@ Page({
     exam: null,
     bgOptions: [],
     bgIndex: 0,
-
-    // 美颜开关（对标竞品：单开关无档位，默认关闭）
-    beautyOn: false,
 
     modelStateText: '准备中…',
     modelReady: false,
@@ -84,10 +80,6 @@ Page({
 
   onBgChange(e) {
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
-  },
-
-  onBeautyToggle(e) {
-    this.setData({ beautyOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -192,7 +184,6 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
-        beauty: this.data.beautyOn ? beauty.BEAUTY_ON : null,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

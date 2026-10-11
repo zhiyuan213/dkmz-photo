@@ -26,17 +26,6 @@
     </view>
   </view>
 
-  <!-- 美颜：单开关（对标主流证件照 App 的轻修效果） -->
-  <view class="card">
-    <view class="beauty-switch-row">
-      <view class="beauty-switch-info">
-        <view class="card-title">美颜</view>
-        <view class="hint">提亮肤色 · 去黄 · 磨皮，不改变面部特征</view>
-      </view>
-      <switch checked="{{beautyOn}}" bindchange="onBeautyToggle" color="#0D60F8" />
-    </view>
-  </view>
-
   <!-- 引擎状态 -->
   <view class="card">
     <view class="kv">

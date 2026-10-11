@@ -161,23 +161,3 @@
 .cam-shutter.busy {
   opacity: 0.4;
 }
-
-/* 美颜：单开关行 */
-.beauty-switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.beauty-switch-info {
-  flex: 1;
-  padding-right: 24rpx;
-}
-
-.beauty-switch-info .card-title {
-  margin-bottom: 6rpx;
-}
-
-.beauty-switch-row switch {
-  transform: scale(0.9);
-}
