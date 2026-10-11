@@ -16,8 +16,8 @@ import java.util.Base64;
  * 设计要点（证件照场景，与短视频美颜完全不同）：
  *   1. 只在皮肤 mask 内生效——否则白底/蓝底背景一起被推亮，整张照片发灰
  *   2. YCbCr 空间只提亮 Y 通道——RGB 直接加亮度会让肤色发灰发青、丢血色
- *   3. 自适应锚点 + 提亮封顶——锚点 = 皮肤区当前亮度中位数 + 小量提升，
- *      单像素提亮 ≤ 12/255。证件照美白是「微调气色」，不是「把脸打白」
+ *   3. 自适应锚点 + 提亮封顶——锚点 = 皮肤区亮度中位数 +9，阴影区按 75% 收敛，
+ *      单像素提亮 ≤ 26/255；锚点以上（含高光）不动，保留立体感
  *   4. 高光保护——已经很亮的区域衰减提亮幅度，避免脸「曝掉」丢立体感
  *   5. 绝不做瘦脸/大眼——办证照片官方禁止改变面部特征，过度处理会被判「失真」
  *
@@ -30,11 +30,24 @@ public class SkinBeautyService {
 
     private static final Logger log = LoggerFactory.getLogger(SkinBeautyService.class);
 
-    /** 单像素最大提亮量（0-255 尺度）。证件照必须保守，超过 15 就会明显假 */
-    private static final int MAX_DELTA = 12;
+    /**
+     * 单像素最大提亮量（0-255 尺度）。
+     * v2 实测：v1 的「锚点+3 再乘 gain」公式在中位数皮肤处 delta≈0.1，肉眼不可见。
+     * v2 锚点直接抬 9，阴影区按差值 75% 收敛（上限 26），中位数区 ≈ +7，
+     * 视觉上是「气色变好」而非「换了一张脸」。
+     */
+    private static final int MAX_DELTA = 26;
 
-    /** 办证档：极保守（提亮强度 0.15 / 磨皮强度 0.20） */
-    public static final double WHITEN_ID = 0.15;
+    /** 皮肤亮度中位数的目标抬升量（0-255 尺度） */
+    private static final double MEDIAN_LIFT = 9.0;
+
+    /** 阴影区向锚点收敛的比例（1.0 = 完全拉平，丢立体感；0.75 保留光影层次） */
+    private static final double SHADOW_KEEP = 0.75;
+
+    /** 去黄强度（cr 偏移向中性收 12%，发青临界之内） */
+    private static final double DEYELLOW = 0.12;
+
+    /** 磨皮强度（0-1，越高越平；保边阈值见 smooth()） */
     public static final double SMOOTH_ID = 0.20;
 
     /**
@@ -73,8 +86,9 @@ public class SkinBeautyService {
 
         // 1) 皮肤区亮度中位数 → 提亮锚点；2) YCbCr 提亮；3) 保边轻度磨皮
         double medianLuma = calcMaskMedianLuma(work, mask);
-        whiten(work, mask, medianLuma, WHITEN_ID);
+        whiten(work, mask, medianLuma);
         smooth(work, mask, SMOOTH_ID);
+        log.info("美肤完成 medianY={} → +{}", (int) medianLuma, MEDIAN_LIFT);
 
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -86,15 +100,15 @@ public class SkinBeautyService {
     }
 
     // ------------------------------------------------------------------
-    // 美白（YCbCr 空间只动 Y，轻微去黄）
+    // 美白（YCbCr 空间只动 Y，去黄）
     // ------------------------------------------------------------------
     private static void whiten(BufferedImage img, boolean[][] mask,
-                               double medianLuma, double strength) {
+                               double medianLuma) {
         int w = img.getWidth();
         int h = img.getHeight();
 
-        // 锚点 = 当前中位数 + 随强度的小幅提升，上限 240
-        double target = Math.min(240.0, medianLuma + 20.0 * strength);
+        // 目标锚点：当前中位数 + 可感知的抬升，上限 238（再高纸打印会过曝）
+        double target = Math.min(238.0, medianLuma + MEDIAN_LIFT);
 
         int[] rgb = new int[w * h];
         img.getRGB(0, 0, w, h, rgb, 0, w);
@@ -113,18 +127,23 @@ public class SkinBeautyService {
                 double cb = 128.0 - 0.168736 * r - 0.331264 * g + 0.5 * b;
                 double cr = 128.0 + 0.5 * r - 0.418688 * g - 0.081312 * b;
 
-                // 越暗提得越多；高光保护：接近 190 后衰减
-                double gain = Math.max(0, (target - y0) / Math.max(target - 40.0, 1.0));
+                // 亮度低于锚点的部分按比例向锚点收敛（保留 25% 阴影层次）；
+                // 高于锚点（含高光）不动 → 天然的立体感与高光保护
+                double delta = (target - y0) * SHADOW_KEEP;
+                if (delta < 0) delta = 0;
+
+                // 高光保护：接近 190 后再衰减一次，避免脸「曝掉」
                 double hiGuard = 1.0 - Math.pow(
                         Math.max(0, Math.min(1, (y0 - 190.0) / 65.0)), 1.5);
+                delta *= hiGuard;
 
-                double delta = 20.0 * strength * gain * hiGuard;
-                delta = Math.max(0, Math.min(MAX_DELTA, delta));
+                delta = Math.min(MAX_DELTA, delta);
+                if (delta < 0.5) continue;
 
                 double y1 = Math.min(255, y0 + delta);
 
-                // 轻微去黄：cr 向中性收一点（过头会发青，限幅 15%）
-                double cr1 = 128.0 + (cr - 128.0) * (1.0 - 0.15 * strength);
+                // 去黄：cr 偏移向中性收 12%
+                double cr1 = 128.0 + (cr - 128.0) * (1.0 - DEYELLOW);
 
                 int nr = clamp((int) (y1 + 1.402 * (cr1 - 128.0)));
                 int ng = clamp((int) (y1 - 0.344136 * (cb - 128.0)

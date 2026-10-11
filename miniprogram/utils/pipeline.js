@@ -196,6 +196,11 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
       }
       cleanGhostAlpha(alpha, outW, outH);
 
+      // 边缘去污染（换深色底必做）：半透明边缘像素混着原背景色（常见白墙），
+      // 铺红/蓝等深饱和底色时显形为灰霜。先按 alpha 反推纯人像色，
+      // 再把过淡的 alpha 光环直接收掉。
+      decontaminateEdge(alpha, person.data, outW, outH);
+
       const bg = matting.hexToRgb(bgHex);
       const d = person.data;
       for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
@@ -213,6 +218,63 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
     img.onerror = () => reject(new Error('图片解码失败'));
     img.src = croppedPath;
   });
+}
+
+/**
+ * 边缘去污染 + 轻度 alpha 内收（原位修改）
+ *
+ * 原理：抠图源是带背景的 JPEG，边缘半透明像素的观测色
+ *   C = F·a + B·(1-a)   （F=纯人像色，B=原背景色，a=alpha）
+ * 直接拿 C 去和目标底色混合，等于把原背景（白墙）又掺了回去——
+ * 白底上无感，红/蓝底上头发边缘就发灰。
+ *
+ * 处理：
+ *  1. 用 a<0.03 的像素均值估计原背景色 B（比硬编码白色更稳，兼容非白背景）；
+ *  2. 对 0.10 ≤ a < 0.85 的边缘带反推 F = (C - B·(1-a)) / a 并 clamp；
+ *     合成时 F·a + 目标底色·(1-a)，背景影响即被替换为目标底色；
+ *  3. a < 0.10 的光环直接置 0（向内收 1px 量级），避免低 alpha 区
+ *     反推放大噪声（a=0.1 时误差放大 10 倍）。
+ * 白底输出几乎不变（F·a + 白·(1-a) ≈ 原观测值），深色底边缘明显变净。
+ */
+function decontaminateEdge(alpha, d, outW, outH) {
+  const n = outW * outH;
+  const LOW = 0.1;
+  const HIGH = 0.85;
+
+  // 1) 估计原背景色（近透明像素均值；样本太少则退回纯白）
+  let br = 0;
+  let bgG = 0;
+  let bb = 0;
+  let cnt = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    if (alpha[i] < 0.03) {
+      br += d[p];
+      bgG += d[p + 1];
+      bb += d[p + 2];
+      cnt++;
+    }
+  }
+  const B0 = cnt > n * 0.005 ? br / cnt : 255;
+  const B1 = cnt > n * 0.005 ? bgG / cnt : 255;
+  const B2 = cnt > n * 0.005 ? bb / cnt : 255;
+
+  // 2) 反推 + 收边
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const a = alpha[i];
+    if (a <= 0) continue;
+    if (a < LOW) {
+      alpha[i] = 0;
+      continue;
+    }
+    if (a >= HIGH) continue; // 实心区不受背景影响，不动
+    const w = 1 - a;
+    let fr = (d[p] - B0 * w) / a;
+    let fg = (d[p + 1] - B1 * w) / a;
+    let fb = (d[p + 2] - B2 * w) / a;
+    d[p] = fr < 0 ? 0 : fr > 255 ? 255 : fr;
+    d[p + 1] = fg < 0 ? 0 : fg > 255 ? 255 : fg;
+    d[p + 2] = fb < 0 ? 0 : fb > 255 ? 255 : fb;
+  }
 }
 
 /**
@@ -389,7 +451,12 @@ function cloudMatting(croppedPath, cloudSegment) {
       if (!res || !res.ok || !res.image) {
         throw new Error((res && res.msg) || '云端精修不可用');
       }
-      return base64ToTempPng(res.image).then(maskFromPng);
+      return base64ToTempPng(res.image)
+        .then(maskFromPng)
+        .then((m) => {
+          m.beautyApplied = res.beautyApplied === true;
+          return m;
+        });
     });
 }
 
@@ -453,6 +520,9 @@ function makeIdPhoto(opts) {
           k: mode === 'cloud' ? '云端抠图' : '端上推理',
           v: mode === 'cloud' ? `${ms} ms（腾讯云 BDA）` : `${ms} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）`,
         });
+        if (mode === 'cloud') {
+          metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : '未生效' });
+        }
         return {
           fd,
           box,
