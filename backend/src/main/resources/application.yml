@@ -82,3 +82,12 @@ photo:
     secret-key: ${BDAB_SECRET_KEY:}
     region: ${BDAB_REGION:ap-guangzhou}
     endpoint: ${BDAB_ENDPOINT:}
+    # 美肤开关（肤色提亮+磨皮，作用区域=自定义分割的 Face mask）。
+    # 每次美肤+抠图消耗 2 次 BDA 调用（共享每月 1000 次免费额度），独立控制成本。
+    # 算法为保守办证档：YCbCr 只提亮 Y 通道、单像素封顶 12/255、绝不变脸型。
+    beauty-enabled: ${BDAB_BEAUTY_ENABLED:false}
+
+# SDK 日志收敛：DEBUG 级可能把请求体（含图片 base64）打进日志，人脸数据严禁落日志
+logging:
+  level:
+    com.tencentcloudapi: WARN

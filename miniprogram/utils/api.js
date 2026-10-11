@@ -177,11 +177,14 @@ function consumeExport(clientNo, specId, specOk) {
 
 /**
  * 云端人像分割：上传裁剪图 base64，返回透明底 PNG base64。
+ * @param {string} imageBase64 裁剪图 base64
+ * @param {boolean} beautify 是否同时做保守美肤（肤色提亮+磨皮，作用区域=面部皮肤 mask）；
+ *                           需后端 BDAB_BEAUTY_ENABLED=true，否则后端忽略并只抠图
  * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
  */
-function cloudSegment(imageBase64) {
-  // 分割 + 大图上传比普通接口慢，放宽到 25s
-  return call('/api/photo/segment', 'POST', { image: imageBase64 }, 25000);
+function cloudSegment(imageBase64, beautify = false) {
+  // 抠图(+美肤需要两次 BDA 调用)+大图上传比普通接口慢，放宽到 25s
+  return call('/api/photo/segment', 'POST', { image: imageBase64, beauty: !!beautify }, 25000);
 }
 
 // ============================================================

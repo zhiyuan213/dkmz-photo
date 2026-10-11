@@ -35,6 +35,13 @@
       </view>
       <switch checked="{{cloudOn}}" bindchange="onCloudToggle" color="#0D60F8" />
     </view>
+    <view class="cloud-switch-row cloud-sub" wx:if="{{cloudOn}}">
+      <view class="cloud-switch-info">
+        <view class="card-title sub">肤色提亮</view>
+        <view class="hint">微调气色不改变面部特征，仅作用在面部皮肤</view>
+      </view>
+      <switch checked="{{beautyOn}}" bindchange="onBeautyToggle" color="#0D60F8" />
+    </view>
   </view>
 
   <!-- 引擎状态 -->
@@ -60,7 +67,7 @@
     </view>
 
     <view class="hint" wx:if="{{!cloudOn}}">照片仅在手机本地处理，不会上传。</view>
-    <view class="hint" wx:if="{{cloudOn}}">已开启云端精修：照片将上传腾讯云做人像分割，仅用于生成结果。</view>
+    <view class="hint" wx:if="{{cloudOn}}">已开启云端精修：照片将上传腾讯云做人像分割，仅用于生成结果{{beautyOn ? '，并做保守的肤色提亮' : ''}}。</view>
     <view class="hint">建议半身照（胸像以上、离镜头 0.5~1 米）：人脸太近会导致裁剪过满、头顶留白不足。</view>
   </view>
 

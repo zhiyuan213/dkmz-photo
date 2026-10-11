@@ -20,6 +20,8 @@ Page({
 
     // 云端精修（腾讯云 BDA 人像分割）：默认关闭，失败自动回退端上抠图
     cloudOn: false,
+    // 肤色提亮（仅在云端精修开启时可选，后端做保守提亮+磨皮）
+    beautyOn: false,
 
     modelStateText: '准备中…',
     modelReady: false,
@@ -88,6 +90,11 @@ Page({
 
   onCloudToggle(e) {
     this.setData({ cloudOn: !!e.detail.value });
+    if (!e.detail.value) this.setData({ beautyOn: false });
+  },
+
+  onBeautyToggle(e) {
+    this.setData({ beautyOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -203,7 +210,9 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
-        cloudSegment: useCloud ? (b64) => api.cloudSegment(b64) : null,
+        cloudSegment: useCloud
+          ? (b64) => api.cloudSegment(b64, this.data.beautyOn)
+          : null,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

@@ -181,3 +181,14 @@
 .cloud-switch-row switch {
   transform: scale(0.9);
 }
+
+.cloud-switch-row.cloud-sub {
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid rgba(13, 96, 248, 0.08);
+}
+
+.cloud-switch-info .card-title.sub {
+  font-size: 28rpx;
+  color: #4a5568;
+}

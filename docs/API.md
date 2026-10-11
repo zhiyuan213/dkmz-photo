@@ -161,12 +161,23 @@ body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
 ## 三B、云端精修（腾讯云 BDA 人像分割）
 
 ### POST /api/photo/segment
-body：`{ "image": "<base64 或 dataURL>" }`（base64 ≤5M，分辨率 <2000×2000）
+body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
+
+- `image`：base64 ≤5M，分辨率 <2000×2000（超限服务端自动压缩到长边 1920）
+- `beauty`：可选，`true` 时先做保守美肤（肤色提亮+磨皮，作用区域 = 自定义分割
+  `SegmentCustomizedPortraitPic` 的 **Face-only** mask，不含五官/头发）再抠图；
+  需后端 `BDAB_BEAUTY_ENABLED=true`，美肤失败自动退化为纯抠图，不阻断
+- ⚠️ 美肤必须在**抠图前**做（作用于 RGB 原图）：透明底 PNG 进 Java ImageIO
+  会被铺黑且丢失 alpha，参考实现里「先抠图再美肤」的 `/process` 顺序有此 bug，已规避
 
 返回：
-- 成功 `{ ok:true, image:"<透明底PNG base64>", costMs }`
+- 成功 `{ ok:true, image:"<透明底PNG base64>", beautyApplied:bool, costMs }`
 - 未开通 `{ ok:false, code:"BDA_DISABLED", msg }`
-- 失败 `{ ok:false, code:"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
+- 失败 `{ ok:false, code:"BAD_REQUEST"|"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
+
+可靠性：偶发 `ServerError/RequestTimeout/UnKnowError` 自动重试 1 次；
+SDK 错误码已翻译成中文（分辨率超限/无人脸/欠费等可直接 toast）。
+日志严禁打印图片 base64（SDK 日志级别已收敛到 WARN）。
 
 调用 `SegmentPortraitPic`（Scene=GEN，RspImgType=base64）。前端在用户开启
 「云端精修」时调用，拿到透明底 PNG 后在端上重建 alpha 继续换底合成；
@@ -177,9 +188,10 @@ body：`{ "image": "<base64 或 dataURL>" }`（base64 ≤5M，分辨率 <2000×2
 | 变量 | 说明 |
 |---|---|
 | `BDAB_ENABLED` | 总开关（配置好密钥后置 `true`） |
-| `BDAB_SECRET_ID` / `BDAB_SECRET_KEY` | 腾讯云 API 密钥（建议子账号仅授权 bda） |
+| `BDAB_SECRET_ID` / `BDAB_SECRET_KEY` | 腾讯云 API 密钥（建议子账号仅授权 bda，`QcloudBDAAccess`） |
 | `BDAB_REGION` | 仅 `ap-beijing` / `ap-guangzhou` / `ap-shanghai`，默认广州 |
 | `BDAB_ENDPOINT` | 可选。云托管容器直连 https 报 PKIX 时，试 `bda.internal.tencentcloudapi.com`（限同地域 VPC） |
+| `BDAB_BEAUTY_ENABLED` | 美肤开关（每次美肤+抠图消耗 2 次 BDA 调用，共享免费额度） |
 
 计费：每接口每月 1000 次免费额度，超出后付费约 0.01 元/次。
 隐私：开启后照片上传腾讯云做分割，隐私政策页已披露（「云端精修」条目）。
