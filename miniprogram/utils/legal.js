@@ -7,7 +7,7 @@
 
 module.exports = {
   APP_NAME: '登科喵证件照',
-  UPDATED_AT: '2026-10-11',
+  UPDATED_AT: '2026-10-12',
 
   // TODO 上线前替换为真实邮箱
   CONTACT_EMAIL: '（上线前填写联系邮箱）',

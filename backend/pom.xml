@@ -21,6 +21,7 @@
     <java.version>17</java.version>
     <mybatis-plus.version>3.5.7</mybatis-plus.version>
     <mysql.version>8.3.0</mysql.version>
+    <tencentcloud.bda.version>3.1.1223</tencentcloud.bda.version>
   </properties>
 
   <dependencies>
@@ -33,6 +34,14 @@
       <groupId>com.baomidou</groupId>
       <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
       <version>${mybatis-plus.version}</version>
+    </dependency>
+
+    <!-- 腾讯云 人体分析（BDA）SDK：人像分割 SegmentPortraitPic（云端精修抠图用）
+         只用到 bda 一个产品包，体积远小于聚合包；不配置密钥时功能关闭，不影响其他接口 -->
+    <dependency>
+      <groupId>com.tencentcloudapi</groupId>
+      <artifactId>tencentcloud-sdk-java-bda</artifactId>
+      <version>${tencentcloud.bda.version}</version>
     </dependency>
 
     <dependency>

@@ -1,12 +1,13 @@
 const specs = require('../../utils/specs');
 const matting = require('../../utils/matting');
 const pipeline = require('../../utils/pipeline');
+const api = require('../../utils/api');
 
 const RESULT_KEY = 'dkmz_last_result';
 
 const STEPS = [
   { key: 'crop', label: '人脸检测 · 智能裁剪' },
-  { key: 'matting', label: '端上抠图' },
+  { key: 'matting', label: '抠图' },
   { key: 'compose', label: '换底合成' },
   { key: 'size', label: '按规格导出' },
 ];
@@ -16,6 +17,9 @@ Page({
     exam: null,
     bgOptions: [],
     bgIndex: 0,
+
+    // 云端精修（腾讯云 BDA 人像分割）：默认关闭，失败自动回退端上抠图
+    cloudOn: false,
 
     modelStateText: '准备中…',
     modelReady: false,
@@ -80,6 +84,10 @@ Page({
 
   onBgChange(e) {
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
+  },
+
+  onCloudToggle(e) {
+    this.setData({ cloudOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -166,13 +174,24 @@ Page({
   },
 
   resetSteps() {
-    this.setData({ steps: STEPS.map((s) => ({ key: s.key, label: s.label, state: 'pending' })) });
+    const mattingLabel = this.data.cloudOn && api.isCloudEnabled() ? '云端抠图 · 精修' : '端上抠图';
+    this.setData({
+      steps: STEPS.map((s) => ({
+        key: s.key,
+        label: s.key === 'matting' ? mattingLabel : s.label,
+        state: 'pending',
+      })),
+    });
   },
 
   run(imgPath) {
-    if (!this.session) {
+    const useCloud = this.data.cloudOn && api.isCloudEnabled();
+    if (!this.session && !useCloud) {
       wx.showToast({ title: '模型未就绪', icon: 'none' });
       return;
+    }
+    if (this.data.cloudOn && !api.isCloudEnabled()) {
+      wx.showToast({ title: '未连接云端，使用本地抠图', icon: 'none' });
     }
     const bg = this.data.bgOptions[this.data.bgIndex] || specs.getBackground('white');
     this.setData({ busy: true, progressText: '' });
@@ -184,6 +203,7 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
+        cloudSegment: useCloud ? (b64) => api.cloudSegment(b64) : null,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

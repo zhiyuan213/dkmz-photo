@@ -161,3 +161,23 @@
 .cam-shutter.busy {
   opacity: 0.4;
 }
+
+/* 云端精修：单开关行 */
+.cloud-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cloud-switch-info {
+  flex: 1;
+  padding-right: 24rpx;
+}
+
+.cloud-switch-info .card-title {
+  margin-bottom: 6rpx;
+}
+
+.cloud-switch-row switch {
+  transform: scale(0.9);
+}

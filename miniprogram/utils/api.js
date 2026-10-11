@@ -52,8 +52,9 @@ function httpReady() {
  * @param {string} path 以 / 开头的接口路径，如 /api/photo/specs
  * @param {string} method GET / POST
  * @param {object} data 请求体（POST）或 query（GET）
+ * @param {number} timeoutMs 可选超时（毫秒），云端精修等慢接口传大值
  */
-function call(path, method = 'GET', data = {}) {
+function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
   return new Promise((resolve, reject) => {
     if (USE_MOCK) {
       reject({ code: 'MOCK_MODE', msg: '离线调试模式' });
@@ -67,7 +68,7 @@ function call(path, method = 'GET', data = {}) {
         method,
         header: { 'X-WX-SERVICE': SERVICE, 'content-type': 'application/json' },
         data,
-        timeout: TIMEOUT,
+        timeout: timeoutMs,
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
@@ -89,7 +90,7 @@ function call(path, method = 'GET', data = {}) {
         url: BASE_URL + path,
         method,
         data,
-        timeout: TIMEOUT,
+        timeout: timeoutMs,
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
@@ -171,6 +172,19 @@ function consumeExport(clientNo, specId, specOk) {
 }
 
 // ============================================================
+// 云端精修（腾讯云 BDA 人像分割，走 dkmz-backend 中转）
+// ============================================================
+
+/**
+ * 云端人像分割：上传裁剪图 base64，返回透明底 PNG base64。
+ * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
+ */
+function cloudSegment(imageBase64) {
+  // 分割 + 大图上传比普通接口慢，放宽到 25s
+  return call('/api/photo/segment', 'POST', { image: imageBase64 }, 25000);
+}
+
+// ============================================================
 // 统一能力探测：给页面判断「要不要显示购买入口」
 // ============================================================
 function isCloudEnabled() {
@@ -189,6 +203,7 @@ module.exports = {
   fetchMyOrders,
   fetchEntitlement,
   consumeExport,
+  cloudSegment,
   isCloudEnabled,
   ENV_ID,
   SERVICE,

@@ -63,3 +63,22 @@ wx:
 # 运维/管理接口口令（规格库后台维护、兜底查单、订单总览、权益修数）
 photo:
   job-token: ${PHOTO_JOB_TOKEN:change-me}
+  # ------------------------------------------------------------
+  # 云端精修（腾讯云 BDA 人像分割）：
+  #   端上 MODNet 对发丝/复杂背景的抠图质量有限，提供可选的云端分割通道。
+  #   未配置密钥时 enabled=false，/api/photo/segment 明确返回「未开通」，
+  #   前端自动回退端上抠图，不影响其他功能。
+  #   BDAB_ENABLED          总开关
+  #   BDAB_SECRET_ID/_KEY   腾讯云 API 密钥（访问管理 → 访问密钥；建议用子账号最小权限，仅授权 bda）
+  #   BDAB_REGION           仅支持 ap-beijing / ap-guangzhou / ap-shanghai
+  #   BDAB_ENDPOINT         可选；默认公网 bda.tencentcloudapi.com。
+  #                         云托管容器若直连 https 报 PKIX 证书错误，可试内网域名
+  #                         bda.internal.tencentcloudapi.com（限同地域 VPC 内）
+  # 计费：每接口每月 1000 次免费额度，超出后付费约 0.01 元/次（详见腾讯云购买指南）
+  # ------------------------------------------------------------
+  bda:
+    enabled: ${BDAB_ENABLED:false}
+    secret-id: ${BDAB_SECRET_ID:}
+    secret-key: ${BDAB_SECRET_KEY:}
+    region: ${BDAB_REGION:ap-guangzhou}
+    endpoint: ${BDAB_ENDPOINT:}

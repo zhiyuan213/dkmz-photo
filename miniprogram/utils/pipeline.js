@@ -8,7 +8,12 @@
  *  - utils/face.js   VisionKit 静态图人脸检测 + calcCropBox 构图
  *  - utils/matting.js MODNet 推理会话（session 由调用方提前建好传入）
  *
- * 隐私：原图全程不出手机，只在端上处理。
+ * 抠图通道二选一（运行时自动降级）：
+ *  - 端上 MODNet（默认）：离线、免上传
+ *  - 云端精修（opts.cloudSegment）：调用方传入 base64→Promise 函数，走腾讯云 BDA
+ *    人像分割，发丝/复杂背景边缘更准；失败或未开通时自动回退端上，功能不中断
+ *
+ * 隐私：端上通道原图全程不出手机；云端精修开启时裁剪图会上传至腾讯云做分割。
  */
 
 const matting = require('./matting');
@@ -322,17 +327,97 @@ function exportUnderSize(canvas, w, h, spec) {
 
 // ------------------------------------------------------------------- 主链路
 
+/** 读临时文件为 base64（云端精修上传用） */
+function fileToBase64(path) {
+  return new Promise((resolve, reject) => {
+    wx.getFileSystemManager().readFile({
+      filePath: path,
+      encoding: 'base64',
+      success: (r) => resolve(r.data),
+      fail: (e) => reject(new Error('读取图片失败：' + JSON.stringify(e))),
+    });
+  });
+}
+
+/** 把 base64 PNG 写成临时文件（offscreen canvas 的 Image 对 temp 路径支持最稳） */
+function base64ToTempPng(b64) {
+  return new Promise((resolve, reject) => {
+    const p = `${wx.env.USER_DATA_PATH}/cloud_segment_${Date.now()}.png`;
+    wx.getFileSystemManager().writeFile({
+      filePath: p,
+      data: b64,
+      encoding: 'base64',
+      success: () => resolve(p),
+      fail: (e) => reject(new Error('写入分割结果失败：' + JSON.stringify(e))),
+    });
+  });
+}
+
+/**
+ * 从云端返回的透明底 PNG 提取 alpha 蒙版。
+ * 输入即裁剪图（outW×outH），返回 PNG 尺寸与之一致，后续 resizeMask 零缩放直通。
+ */
+function maskFromPng(pngPath) {
+  return new Promise((resolve, reject) => {
+    const probe = wx.createOffscreenCanvas({ type: '2d', width: 8, height: 8 });
+    const img = probe.createImage();
+    img.onload = () => {
+      const w = img.width;
+      const h = img.height;
+      const canvas = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const d = ctx.getImageData(0, 0, w, h).data;
+      const n = w * h;
+      const mask = new Float32Array(n);
+      for (let i = 0; i < n; i++) mask[i] = d[i * 4 + 3] / 255;
+      resolve({ mask, maskWidth: w, maskHeight: h });
+    };
+    img.onerror = () => reject(new Error('分割结果解码失败'));
+    img.src = pngPath;
+  });
+}
+
+/**
+ * 云端精修抠图：裁剪图 → base64 上传 → BDA 分割 → 提取 alpha 蒙版。
+ * cloudSegment(base64) 需 resolve { ok:true, image:<png base64> }，reject / ok:false 一律视为失败。
+ */
+function cloudMatting(croppedPath, cloudSegment) {
+  return fileToBase64(croppedPath)
+    .then((b64) => cloudSegment(b64))
+    .then((res) => {
+      if (!res || !res.ok || !res.image) {
+        throw new Error((res && res.msg) || '云端精修不可用');
+      }
+      return base64ToTempPng(res.image).then(maskFromPng);
+    });
+}
+
+/** 端上 MODNet 抠图（原有链路） */
+function localMatting(croppedPath, session, shortEdge) {
+  return matting
+    .imageToTensor(croppedPath, shortEdge)
+    .then((tensor) => matting.runMatting(session, tensor))
+    .then((r) => ({
+      mask: r.mask,
+      maskWidth: r.maskWidth,
+      maskHeight: r.maskHeight,
+    }));
+}
+
 /**
  * 制作一张证件照
  * @param {object} opts
- *   imgPath    原图路径（wx.chooseMedia original）
- *   exam       specs.js 的考试对象
- *   bgHex      底色
- *   session    已加载的推理会话（matting.createSession 产物）
- *   shortEdge  推理短边，默认 384
- *   watermark  水印文字；传空串则不加水印（付费高清版）
- *   onStep     (step, info) 进度回调：face / crop / matting / compose / size
- * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo）
+ *   imgPath       原图路径（wx.chooseMedia original）
+ *   exam          specs.js 的考试对象
+ *   bgHex         底色
+ *   session       已加载的推理会话（matting.createSession 产物）
+ *   shortEdge     推理短边，默认 384
+ *   watermark     水印文字；传空串则不加水印（付费高清版）
+ *   cloudSegment  可选，云端精修：(裁剪图 base64) => Promise<{ok,image}>；
+ *                 失败/未开通自动回退端上 MODNet
+ *   onStep        (step, info) 进度回调：face / crop / matting / compose / size
+ * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo/mattingMode）
  */
 function makeIdPhoto(opts) {
   const o = opts || {};
@@ -362,20 +447,34 @@ function makeIdPhoto(opts) {
     .then(({ fd, box, croppedPath }) => {
       step('matting');
       const t1 = Date.now();
-      return matting
-        .imageToTensor(croppedPath, o.shortEdge || 384)
-        .then((tensor) => matting.runMatting(o.session, tensor))
-        .then((r) => {
-          metrics.push({ k: '端上推理', v: `${r.costMs} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）` });
-          return {
-            fd,
-            box,
-            croppedPath,
-            mask: r.mask,
-            maskWidth: r.maskWidth,
-            maskHeight: r.maskHeight,
-            mattingMs: Date.now() - t1,
-          };
+      const finish = (r, mode) => {
+        const ms = Date.now() - t1;
+        metrics.push({
+          k: mode === 'cloud' ? '云端抠图' : '端上推理',
+          v: mode === 'cloud' ? `${ms} ms（腾讯云 BDA）` : `${ms} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）`,
+        });
+        return {
+          fd,
+          box,
+          croppedPath,
+          mask: r.mask,
+          maskWidth: r.maskWidth,
+          maskHeight: r.maskHeight,
+          mattingMs: ms,
+          mattingMode: mode,
+        };
+      };
+      const local = () => localMatting(croppedPath, o.session, o.shortEdge || 384).then((r) => finish(r, 'local'));
+      if (typeof o.cloudSegment !== 'function') {
+        return local();
+      }
+      // 云端优先，任何失败（未开通/网络/服务错误）静默回退端上，出片不中断
+      return cloudMatting(croppedPath, o.cloudSegment)
+        .then((r) => finish(r, 'cloud'))
+        .catch((e) => {
+          console.warn('[photo][pipeline] 云端精修失败，回退端上抠图：', e && e.message);
+          metrics.push({ k: '云端抠图', v: '失败，已回退端上' });
+          return local();
         });
     })
     .then((ctx0) => {
