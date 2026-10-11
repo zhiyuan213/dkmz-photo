@@ -4,7 +4,7 @@
   <view class="card preview-card">
     <image class="preview" src="{{src}}" mode="aspectFit" bindtap="onPreview" />
     <view class="preview-cap">{{px}} · {{kb}}KB · {{bgName}}</view>
-    <view class="watermark-tip">预览版含水印 · 高清无水印版即将上线</view>
+    <view class="watermark-tip">预览版含水印 · 保存消耗 1 次额度，解锁高清无水印</view>
   </view>
 
   <!-- 规格校验 -->
@@ -34,7 +34,7 @@
   <!-- 操作 -->
   <view class="card">
     <button class="btn big" bindtap="onSave" disabled="{{saving || saved}}">
-      {{saved ? '已保存到相册' : saving ? '保存中…' : '保存到相册（预览版）'}}
+      {{saved ? '已保存到相册' : saving ? '保存中…' : '保存到相册'}}
     </button>
     <button class="btn ghost" bindtap="onRemake">重新制作</button>
     <button class="btn ghost" bindtap="onHome">返回首页</button>

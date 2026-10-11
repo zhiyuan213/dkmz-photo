@@ -1,0 +1,146 @@
+/* 购买页：商品卡 + 权益概览。配色与全局一致（主蓝 #0D60F8 / 页底 #F1F5FB） */
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2b43;
+  margin: 8rpx 8rpx 16rpx;
+}
+
+/* ---- 权益概览 ---- */
+.ent-card {
+  padding: 28rpx 32rpx;
+}
+
+.ent-left {
+  font-size: 28rpx;
+  color: #5a6b8c;
+}
+
+.ent-num {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #0d60f8;
+  margin: 0 6rpx;
+}
+
+.ent-vip {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #b8860b;
+}
+
+/* ---- 商品卡 ---- */
+.goods {
+  padding: 32rpx;
+  margin-bottom: 20rpx;
+}
+
+.goods-vip {
+  border: 2rpx solid #0d60f8;
+  box-shadow: 0 6rpx 24rpx rgba(13, 96, 248, 0.12);
+}
+
+.goods-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.goods-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1f2b43;
+}
+
+.goods-badge {
+  font-size: 22rpx;
+  color: #ffffff;
+  background: #0d60f8;
+  border-radius: 999rpx;
+  padding: 4rpx 18rpx;
+}
+
+.goods-benefit {
+  font-size: 26rpx;
+  color: #5a6b8c;
+  margin-top: 10rpx;
+}
+
+.goods-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24rpx;
+}
+
+.goods-price {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #0d60f8;
+}
+
+.price-symbol {
+  font-size: 28rpx;
+  margin-right: 2rpx;
+}
+
+.buy-btn {
+  min-width: 180rpx;
+}
+
+/* ---- 购买须知 ---- */
+.tip-card {
+  padding: 28rpx 32rpx;
+}
+
+.tip-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2b43;
+  margin-bottom: 12rpx;
+}
+
+.tip-line {
+  font-size: 24rpx;
+  color: #7a88a3;
+  line-height: 1.7;
+}
+
+/* ---- 空态 / 底部按钮（复用全局 .card/.btn/.empty 样式，只补间距） ---- */
+.back {
+  margin-top: 16rpx;
+}
+
+/* ---- 主按钮与空态（本页私有，orders 页的同类样式不跨页生效） ---- */
+.btn.primary {
+  background: #0d60f8;
+  color: #ffffff;
+  border: none;
+}
+
+.buy-btn {
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 36rpx;
+  font-size: 28rpx;
+}
+
+.empty {
+  text-align: center;
+  padding: 70rpx 24rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  color: #4a5568;
+  font-weight: 600;
+}
+
+.empty-desc {
+  margin-top: 14rpx;
+  font-size: 25rpx;
+  color: #8892a4;
+  line-height: 1.6;
+}
+

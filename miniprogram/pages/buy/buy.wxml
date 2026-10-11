@@ -1,0 +1,57 @@
+<view class="page">
+  <!-- 权益概览 -->
+  <view class="card ent-card" wx:if="{{entitlement}}">
+    <view class="ent-line">
+      <text wx:if="{{entitlement.vipActive}}" class="ent-vip">会员生效中 · 至 {{entitlement.vipExpireAt}}</text>
+      <text wx:else class="ent-left">剩余可导出 <text class="ent-num">{{entitlement.remaining}}</text> 张</text>
+    </view>
+  </view>
+
+  <!-- 未配置云端时给出明确说明 -->
+  <view class="card empty" wx:if="{{!cloudEnabled}}">
+    <view class="empty-title">购买服务未开通</view>
+    <view class="empty-desc">当前为纯本地模式，购买功能需连接云托管后使用。</view>
+  </view>
+
+  <view class="card empty" wx:elif="{{loading}}">
+    <view class="empty-title">加载中…</view>
+  </view>
+
+  <view class="card empty" wx:elif="{{error}}">
+    <view class="empty-title">{{error}}</view>
+    <view class="empty-desc">下拉可重试</view>
+  </view>
+
+  <!-- 商品列表 -->
+  <block wx:elif="{{goods.length > 0}}">
+    <view class="section-title">选择解锁方式</view>
+
+    <view class="card goods {{item.vip ? 'goods-vip' : ''}}" wx:for="{{goods}}" wx:key="goodsId">
+      <view class="goods-head">
+        <view class="goods-name">{{item.name}}</view>
+        <view class="goods-badge" wx:if="{{item.vip}}">最划算</view>
+      </view>
+      <view class="goods-benefit">{{item.benefit}}</view>
+      <view class="goods-foot">
+        <view class="goods-price"><text class="price-symbol">¥</text>{{item.priceText}}</view>
+        <button
+          class="btn primary buy-btn"
+          size="mini"
+          disabled="{{paying}}"
+          bindtap="onBuy"
+          data-index="{{index}}"
+        >立即购买</button>
+      </view>
+    </view>
+
+    <view class="card tip-card">
+      <view class="tip-title">购买须知</view>
+      <view class="tip-line">· 高清无水印：去掉预览图上的「登科喵证件照」水印，可直接用于报名打印。</view>
+      <view class="tip-line">· 会员有效期内不限张数；张数包按导出张数消耗，制作永远免费。</view>
+      <view class="tip-line">· 支付由微信虚拟支付完成，订单可在下方「我的订单」中查询。</view>
+    </view>
+  </block>
+
+  <button class="btn ghost back" bindtap="onGoOrders">我的订单</button>
+  <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+</view>

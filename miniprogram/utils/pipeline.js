@@ -550,6 +550,8 @@ function makeIdPhoto(opts) {
     .then((ctx0) => {
       step('compose');
       const t2 = Date.now();
+      // 合成干净的画布（无水印）；水印在导出阶段按版本叠加
+      const wm = o.watermark === undefined ? '登科喵证件照 · 预览' : o.watermark;
       return buildComposite(
         ctx0.croppedPath,
         ctx0.mask,
@@ -558,7 +560,7 @@ function makeIdPhoto(opts) {
         outW,
         outH,
         o.bgHex || '#FFFFFF',
-        o.watermark === undefined ? '登科喵证件照 · 预览' : o.watermark,
+        null,
         {
           srcW: ctx0.fd.origW,
           srcH: ctx0.fd.origH,
@@ -567,28 +569,38 @@ function makeIdPhoto(opts) {
         }
       ).then((canvas) => {
         metrics.push({ k: '换底合成', v: `${Date.now() - t2} ms` });
-        return Object.assign(ctx0, { canvas });
+        return Object.assign(ctx0, { canvas, wm });
       });
     })
     .then((ctx0) => {
       step('size');
+      // ① 高清无水印版：按规格体积二分（消耗权益后保存的就是它）
       return exportUnderSize(ctx0.canvas, outW, outH, spec).then((out) => {
-        metrics.push({ k: '导出', v: `${out.kb} KB（质量 ${(out.quality * 100).toFixed(0)}%）` });
-        metrics.push({ k: '总计', v: `${Date.now() - t0} ms` });
-        return {
-          path: out.path,
-          kb: out.kb,
-          quality: out.quality,
-          underMin: out.underMin,
-          px: [outW, outH],
-          bgHex: o.bgHex,
-          faceFound: !!ctx0.fd.face,
-          faceCostMs: ctx0.fd.costMs,
-          keypoints: ctx0.fd.keypoints,
-          box: ctx0.box,
-          metrics,
-          totalMs: Date.now() - t0,
+        metrics.push({ k: '高清导出', v: `${out.kb} KB（质量 ${(out.quality * 100).toFixed(0)}%，无水印）` });
+        // ② 水印预览版：展示用，不做体积二分（一次导出即可）
+        const drawPreview = () => {
+          if (!ctx0.wm) return Promise.resolve(out.path);
+          drawWatermark(ctx0.canvas.getContext('2d'), outW, outH, ctx0.wm);
+          return exportCanvas(ctx0.canvas, outW, outH, 0.85);
         };
+        return drawPreview().then((previewPath) => {
+          metrics.push({ k: '总计', v: `${Date.now() - t0} ms` });
+          return {
+            path: out.path,          // 高清无水印（消耗权益后保存）
+            previewPath,             // 带水印预览（结果页展示 / 降级保存）
+            kb: out.kb,
+            quality: out.quality,
+            underMin: out.underMin,
+            px: [outW, outH],
+            bgHex: o.bgHex,
+            faceFound: !!ctx0.fd.face,
+            faceCostMs: ctx0.fd.costMs,
+            keypoints: ctx0.fd.keypoints,
+            box: ctx0.box,
+            metrics,
+            totalMs: Date.now() - t0,
+          };
+        });
       });
     });
 }

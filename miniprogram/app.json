@@ -4,6 +4,7 @@
     "pages/make/make",
     "pages/result/result",
     "pages/orders/orders",
+    "pages/buy/buy",
     "pages/lab/index",
     "pages/about/about",
     "pages/privacy/privacy",

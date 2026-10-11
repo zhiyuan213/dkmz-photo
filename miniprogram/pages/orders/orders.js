@@ -78,6 +78,10 @@ Page({
     wx.setClipboardData({ data: id });
   },
 
+  onGoBuy() {
+    wx.navigateTo({ url: '/pages/buy/buy' });
+  },
+
   onGoHome() {
     wx.reLaunch({ url: '/pages/index/index' });
   },

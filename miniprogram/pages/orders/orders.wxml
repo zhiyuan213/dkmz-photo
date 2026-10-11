@@ -61,5 +61,6 @@
 
   <view class="foot-note" wx:if="{{orders.length > 0}}">如有问题，请通过「关于」页的联系方式与我们联系。</view>
 
+  <button class="btn ghost back" bindtap="onGoBuy" wx:if="{{cloudEnabled}}">购买高清导出 / 会员</button>
   <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
 </view>

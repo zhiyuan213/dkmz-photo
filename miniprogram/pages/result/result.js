@@ -54,11 +54,13 @@ Page({
 
     // 规格校验整体结论（随导出发给服务端，用于统计「哪个考试最常被判不合格」）
     this.specOk = checks.every((c) => c.ok);
+    this._result = r;
 
     this.setData({
       exam,
       bgName: bg.name,
-      src: r.path,
+      // 展示带水印预览版；高清无水印版在保存校验通过后给出
+      src: r.previewPath || r.path,
       kb: r.kb,
       px: `${r.px[0]}×${r.px[1]}`,
       quality: Math.round(r.quality * 100),
@@ -83,9 +85,12 @@ Page({
    */
   onSave() {
     if (this.data.saving || this.data.saved) return;
-    const save = () => this.saveToAlbum();
+    const r = this._result || {};
+    const previewPath = r.previewPath || r.path;
+    const cleanPath = r.path;
+    const save = (p) => this.saveToAlbum(p || previewPath);
     if (!api.isCloudEnabled()) {
-      console.log('[photo][result] 云端未启用，跳过权益校验直接保存');
+      console.log('[photo][result] 云端未启用，跳过权益校验直接保存预览版');
       save();
       return;
     }
@@ -102,7 +107,8 @@ Page({
           if (res.source === 'paid' || res.source === 'vip') {
             wx.showToast({ title: res.source === 'vip' ? '会员权益已使用' : '已使用 1 张', icon: 'none' });
           }
-          save();
+          // 权益校验通过 → 保存高清无水印版
+          save(cleanPath);
           return;
         }
         if (res && res.code === 'QUOTA_EXHAUSTED') {
@@ -113,13 +119,14 @@ Page({
           wx.showToast({ title: '登录态失效，请重新进入小程序', icon: 'none' });
           return;
         }
+        // 其他未明确的拒绝：降级保存预览版，不让用户白做
         save();
       })
       .catch((err) => {
         // 云端异常不让用户白做：先保存，日志留痕
         console.warn('[photo][result] 权益校验失败，降级直接保存', err);
         this.setData({ saving: false });
-        wx.showToast({ title: '网络异常，已保存', icon: 'none' });
+        wx.showToast({ title: '网络异常，已保存预览版', icon: 'none' });
         save();
       });
   },
@@ -136,16 +143,16 @@ Page({
       showCancel: false,
       success: (r) => {
         if (r.confirm && cloudReady) {
-          wx.navigateTo({ url: '/pages/orders/orders' });
+          wx.navigateTo({ url: '/pages/buy/buy' });
         }
       },
     });
   },
 
-  saveToAlbum() {
+  saveToAlbum(filePath) {
     this.setData({ saving: true });
     wx.saveImageToPhotosAlbum({
-      filePath: this.data.src,
+      filePath: filePath || this.data.src,
       success: () => {
         this.setData({ saved: true });
         wx.showToast({ title: '已保存到相册', icon: 'success' });
