@@ -14,11 +14,14 @@ server:
 spring:
   datasource:
     # 建议独立库 dkmz_photo（与 exam_countdown 同实例不同库即可；表名也已加 photo_ 前缀防撞）
-    # 注意（两个已踩过的坑）：
-    #   ① characterEncoding 必须写 Java 编码名 UTF-8，不能写 utf8mb4（驱动会报 Unsupported character encoding）
-    #   ② MySQL 8 默认 caching_sha2_password + 驱动默认开 SSL，内网直连需显式关 SSL 并允许取公钥，
-    #      否则报 CommunicationsException / Public Key Retrieval is not allowed
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    # 下面的默认值 = 云托管现网实际跑通的那串（仅把主机换成 localhost），照抄即可：
+    #   characterEncoding  必须写 **Java 字符集名**：UTF-8 或 utf8 都可以（utf8 是 Java 别名）；
+    #                      ⚠️ 写 utf8mb4 会抛 Unsupported character encoding 'utf8mb4' 导致启动失败
+    #                      （utf8mb4 是 MySQL 的字符集名，不是 Java 的）
+    #   createDatabaseIfNotExist=true  库不存在时自动建（云托管上库已建好，留着无害，本地开发省一步）
+    #   如遇 Public Key Retrieval is not allowed / CommunicationsException，
+    #   再追加 &useSSL=false&allowPublicKeyRetrieval=true（现网未用，说明该实例非该认证模式）
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:}
   sql:

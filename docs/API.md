@@ -173,14 +173,18 @@ body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
 | `XPHOTO_PUSH_TOKEN` | mp 后台消息推送 Token（校验推送来源） |
 | `XPHOTO_GOODS` | 商品配置（见上） |
 
-连接串完整示例（**`characterEncoding` 必须写 Java 编码名 `UTF-8`**，
-写 `utf8mb4` 会让驱动抛 `Unsupported character encoding 'utf8mb4'` 导致服务启动失败；
-内网直连 MySQL 8 还需 `useSSL=false&allowPublicKeyRetrieval=true`，否则报
-`Public Key Retrieval is not allowed` / `CommunicationsException`）：
+连接串完整示例（**下方为云托管现网实际跑通的串**，仅主机按内网地址替换）：
 
 ```
-jdbc:mysql://<内网地址>:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+jdbc:mysql://<内网地址>:3306/dkmz_photo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
 ```
+
+两个易踩的点：
+
+- `characterEncoding` 写的是 **Java 字符集名**，`utf8` 与 `UTF-8` 等价；**写成 `utf8mb4` 会让驱动抛
+  `Unsupported character encoding 'utf8mb4'` 导致服务启动失败**（`utf8mb4` 是 MySQL 的字符集名，不是 Java 的）
+- 若遇到 `Public Key Retrieval is not allowed` / `CommunicationsException`，
+  再追加 `&useSSL=false&allowPublicKeyRetrieval=true`（现网连接串**未使用**这两个参数）
 
 ## 五、数据库
 
