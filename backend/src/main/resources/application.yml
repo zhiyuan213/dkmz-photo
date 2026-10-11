@@ -14,8 +14,11 @@ server:
 spring:
   datasource:
     # 建议独立库 dkmz_photo（与 exam_countdown 同实例不同库即可；表名也已加 photo_ 前缀防撞）
-    # 注意：characterEncoding 必须写 Java 编码名 UTF-8，不能写 utf8mb4（驱动会报 Unsupported character encoding）
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    # 注意（两个已踩过的坑）：
+    #   ① characterEncoding 必须写 Java 编码名 UTF-8，不能写 utf8mb4（驱动会报 Unsupported character encoding）
+    #   ② MySQL 8 默认 caching_sha2_password + 驱动默认开 SSL，内网直连需显式关 SSL 并允许取公钥，
+    #      否则报 CommunicationsException / Public Key Retrieval is not allowed
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:}
   sql:

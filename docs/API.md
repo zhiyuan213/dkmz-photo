@@ -174,10 +174,12 @@ body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
 | `XPHOTO_GOODS` | 商品配置（见上） |
 
 连接串完整示例（**`characterEncoding` 必须写 Java 编码名 `UTF-8`**，
-写 `utf8mb4` 会让驱动抛 `Unsupported character encoding 'utf8mb4'` 导致服务启动失败）：
+写 `utf8mb4` 会让驱动抛 `Unsupported character encoding 'utf8mb4'` 导致服务启动失败；
+内网直连 MySQL 8 还需 `useSSL=false&allowPublicKeyRetrieval=true`，否则报
+`Public Key Retrieval is not allowed` / `CommunicationsException`）：
 
 ```
-jdbc:mysql://<内网地址>:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
+jdbc:mysql://<内网地址>:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
 ```
 
 ## 五、数据库
