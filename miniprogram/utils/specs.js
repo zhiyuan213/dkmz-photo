@@ -15,12 +15,23 @@ const META = {
     '各省、各报考点、各院校可能进一步细化要求，且逐年可能调整。本产品按官方公告预置模板，请以当次官方公告为准。',
 };
 
-const BACKGROUNDS = {
+/** 内置背景库（云端背景全部非法时的回退源；红底 #B80202 为实拍比对定稿值） */
+const BUILTIN_BACKGROUNDS = {
   white: { id: 'white', name: '白底', hex: '#FFFFFF' },
   blue: { id: 'blue', name: '蓝底', hex: '#438EDB' },
   lightBlue: { id: 'lightBlue', name: '浅蓝底', hex: '#64C5FF' },
   red: { id: 'red', name: '红底', hex: '#B80202' },
 };
+
+const BACKGROUNDS = Object.assign({}, BUILTIN_BACKGROUNDS);
+
+/** 把 BACKGROUNDS 恢复为内置库（云端数据不可用时用） */
+function seedBuiltinBackgrounds() {
+  Object.keys(BACKGROUNDS).forEach((k) => delete BACKGROUNDS[k]);
+  Object.keys(BUILTIN_BACKGROUNDS).forEach((k) => {
+    BACKGROUNDS[k] = Object.assign({}, BUILTIN_BACKGROUNDS[k]);
+  });
+}
 
 /** 通用预设尺寸（一寸/二寸…）。内置版为空，由云端下发填充（阶段 2） */
 const PRESETS = [];
@@ -313,6 +324,28 @@ function validExam(e) {
   return true;
 }
 
+/** rgb[3] -> '#RRGGBB'（大写，与内置库写法一致；越界/非数字按 0 处理，绝不产出非法 hex） */
+function rgbToHex(rgb) {
+  const n = (v) => Math.max(0, Math.min(255, Math.round(Number(v) || 0))).toString(16).padStart(2, '0');
+  return ('#' + n(rgb[0]) + n(rgb[1]) + n(rgb[2])).toUpperCase();
+}
+
+/**
+ * 背景色归一化：云端库的背景是 { id, name, rgb:[r,g,b] }，而前端整条链路
+ * （色块渲染 item.hex、导出 bg.hex、pipeline.hexToRgb）用的都是 hex 字符串。
+ * 在这个唯一入口把 rgb 换算成 hex 补上，否则色块全白、导出底色丢失。
+ * （内置库自带 hex；换算结果与内置值逐一相等，见 specs-seed.json。）
+ */
+function normalizeBackground(b) {
+  if (!b || !b.id) return null;
+  const bg = Object.assign({}, b);
+  if (!bg.hex && Array.isArray(bg.rgb) && bg.rgb.length === 3) {
+    bg.hex = rgbToHex(bg.rgb);
+  }
+  // hex 都没有的条目直接丢弃：宁缺勿错，别让非法数据进 BACKGROUNDS
+  return bg.hex ? bg : null;
+}
+
 /** 把云端下发体应用到内存（原地替换，保证其它页面已持有的引用也能生效） */
 function applyCloud(doc) {
   if (!doc || doc.ok === false) return false;
@@ -328,8 +361,14 @@ function applyCloud(doc) {
   if (Array.isArray(doc.backgrounds) && doc.backgrounds.length) {
     Object.keys(BACKGROUNDS).forEach((k) => delete BACKGROUNDS[k]);
     doc.backgrounds.forEach((b) => {
-      if (b && b.id) BACKGROUNDS[b.id] = b;
+      const bg = normalizeBackground(b);
+      if (bg) BACKGROUNDS[bg.id] = bg;
     });
+    // 防御：云端背景全部非法时回退内置库（否则底色选择区会空掉）
+    if (!Object.keys(BACKGROUNDS).length) {
+      console.warn('[photo][specs] 云端背景数据全部无效，回退内置背景');
+      seedBuiltinBackgrounds();
+    }
   }
   if (Array.isArray(doc.presets) && doc.presets.length) {
     PRESETS.length = 0;
