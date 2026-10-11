@@ -1,0 +1,157 @@
+.hero {
+  padding: 40rpx 8rpx 28rpx;
+}
+
+.hero-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #1f2430;
+}
+
+.hero-sub {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #8a94a6;
+}
+
+.search-wrap {
+  position: relative;
+  margin-bottom: 24rpx;
+}
+
+.search {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 70rpx 20rpx 24rpx;
+  font-size: 28rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+}
+
+.search-clear {
+  position: absolute;
+  right: 24rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #b8c0cc;
+  font-size: 28rpx;
+  padding: 10rpx;
+}
+
+.exam-card {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 28rpx 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+}
+
+.exam-card.press {
+  opacity: 0.75;
+}
+
+.exam-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.exam-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.exam-stage {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  color: #8a94a6;
+}
+
+.exam-meta {
+  margin-top: 14rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.chip {
+  font-size: 22rpx;
+  color: #35507a;
+  background: #eef2f8;
+  border-radius: 8rpx;
+  padding: 4rpx 12rpx;
+}
+
+.arrow {
+  color: #c3cad4;
+  font-size: 40rpx;
+  margin-left: 12rpx;
+}
+
+.empty {
+  text-align: center;
+  color: #8a94a6;
+  font-size: 26rpx;
+  padding: 60rpx 0;
+}
+
+.footer {
+  margin-top: 40rpx;
+  padding: 0 8rpx 20rpx;
+}
+
+.footer-meta {
+  font-size: 22rpx;
+  color: #8a94a6;
+}
+
+.footer-disclaimer {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #a8b0bd;
+  line-height: 1.6;
+}
+
+.footer-lab {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  color: #9aa7d8;
+  text-align: center;
+}
+
+/* 页脚：我的订单与权益入口 */
+.footer-orders {
+  margin-top: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 25rpx;
+  color: #4a90e2;
+}
+
+.footer-orders-arrow {
+  margin-left: 8rpx;
+  color: #a9bbd6;
+}
+
+/* 页脚合规入口：关于 / 隐私政策 / 用户协议 */
+.footer-links {
+  margin-top: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.footer-link {
+  font-size: 24rpx;
+  color: #6b8fe8;
+  padding: 6rpx 0;
+}
+
+.footer-link-sep {
+  font-size: 22rpx;
+  color: #c6ccd8;
+  margin: 0 14rpx;
+}

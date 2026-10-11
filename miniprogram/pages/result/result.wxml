@@ -1,0 +1,44 @@
+<view class="page" wx:if="{{exam}}">
+
+  <!-- 预览 -->
+  <view class="card preview-card">
+    <image class="preview" src="{{src}}" mode="aspectFit" bindtap="onPreview" />
+    <view class="preview-cap">{{px}} · {{kb}}KB · {{bgName}}</view>
+    <view class="watermark-tip">预览版含水印 · 高清无水印版即将上线</view>
+  </view>
+
+  <!-- 规格校验 -->
+  <view class="card">
+    <view class="card-title">规格校验（{{exam.name}}）</view>
+    <view class="check" wx:for="{{checks}}" wx:key="k">
+      <text class="check-icon {{item.warn ? 'warn' : item.ok ? 'ok' : 'bad'}}">{{item.warn ? '⚠' : item.ok ? '✓' : '✗'}}</text>
+      <view class="check-body">
+        <view class="check-k">{{item.k}}</view>
+        <view class="check-v">{{item.v}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 耗时明细 -->
+  <view class="card">
+    <view class="card-title">处理明细</view>
+    <view class="kv" wx:for="{{metrics}}" wx:key="k"><text>{{item.k}}</text><text class="v">{{item.v}}</text></view>
+  </view>
+
+  <!-- 官方要求 -->
+  <view class="card">
+    <view class="card-title">官方要求提醒</view>
+    <view class="note" wx:for="{{notes}}" wx:key="*this">· {{item}}</view>
+  </view>
+
+  <!-- 操作 -->
+  <view class="card">
+    <button class="btn big" bindtap="onSave" disabled="{{saving || saved}}">
+      {{saved ? '已保存到相册' : saving ? '保存中…' : '保存到相册（预览版）'}}
+    </button>
+    <button class="btn ghost" bindtap="onRemake">重新制作</button>
+    <button class="btn ghost" bindtap="onHome">返回首页</button>
+    <view class="hint">{{meta.disclaimer}}</view>
+  </view>
+
+</view>

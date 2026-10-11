@@ -1,0 +1,34 @@
+@import "../../styles/doc.wxss";
+
+.about-hero {
+  display: flex;
+  align-items: center;
+  margin-bottom: 28rpx;
+}
+
+.about-badge {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 22rpx;
+  background: linear-gradient(160deg, #ff5a5f, #e5323a);
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+
+.about-name {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2430;
+}
+
+.about-ver {
+  font-size: 24rpx;
+  color: #8b93a1;
+  margin-top: 6rpx;
+}

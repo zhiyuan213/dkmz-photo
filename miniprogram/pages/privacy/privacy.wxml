@@ -1,0 +1,44 @@
+<view class="doc">
+  <view class="doc-title">用户隐私保护政策</view>
+  <view class="doc-meta">更新日期：{{updatedAt}}　·　生效日期：{{updatedAt}}</view>
+
+  <view class="doc-p">「{{appName}}」（以下简称“本产品”）是一款在微信内运行的证件照制作工具。我们深知个人信息对你的重要性，本政策说明在你使用本产品时我们如何处理相关信息。请在使用前仔细阅读。</view>
+
+  <view class="doc-h">一、我们如何处理你的信息</view>
+  <view class="doc-p">为完成「选照片 → 自动裁剪构图 → 一键换底色 → 导出证件照」的全过程，本产品仅处理以下必要信息：</view>
+  <view class="doc-li">1. <text class="doc-strong">你主动选择或拍摄的照片</text>：用于制作证件照。<text class="doc-strong">照片全程仅在你的手机本地处理，不会上传、不会存储到我们的服务器。</text></view>
+  <view class="doc-li">2. <text class="doc-strong">摄像头</text>：当你使用「拍照」功能拍摄证件照时访问。</view>
+  <view class="doc-li">3. <text class="doc-strong">相册（读取）</text>：仅读取你在选择照片时主动挑选的那一张。</view>
+  <view class="doc-li">4. <text class="doc-strong">相册（写入）</text>：当你点击「保存到相册」时，将制作完成的照片写入你的手机相册。</view>
+
+  <view class="doc-h">二、我们不收集的信息</view>
+  <view class="doc-p">本产品不收集你的姓名、手机号、位置、通讯录、微信运动、麦克风等信息，也不读取你的剪贴板。</view>
+
+  <view class="doc-h">三、信息的存储与对外提供</view>
+  <view class="doc-p">由于照片不上传，我们不存储你的照片，也不会向任何第三方共享、转让或公开披露你的信息。</view>
+
+  <view class="doc-h">四、第三方与开源组件</view>
+  <view class="doc-p">端上人像分割使用开源模型 MODNet（Apache-2.0 许可，HuggingFace Xenova/modnet 的 ONNX 导出）。模型文件在首次使用时从公共 CDN 下载并缓存在你的手机本地，<text class="doc-strong">推理完全在本地完成</text>。完整声明见「关于与开源声明」。</view>
+
+  <view class="doc-h">五、你的权利</view>
+  <view class="doc-p">你可随时通过「微信 → 打开本小程序 → 右上角「…」→ 设置」撤回摄像头或相册授权，也可清除小程序缓存。撤回后相关功能将不可用，但不影响其他功能。</view>
+  <view class="doc-p">如对本政策有疑问、意见，或需行使查阅、更正、删除等权利，可联系：{{contact}}</view>
+
+  <view class="doc-h">六、未成年人保护</view>
+  <view class="doc-p">若你是未成年人，请在监护人陪同下阅读本政策并使用本产品。</view>
+
+  <view class="doc-h">七、政策的更新</view>
+  <view class="doc-p">本产品功能调整时，我们可能更新本政策，更新后将在本页展示最新版本。如有重大变更，我们会以显著方式提示你。</view>
+
+  <view class="doc-note">
+    本页为开发者在小程序内展示的隐私保护政策。微信侧记录的《用户隐私保护指引》可在小程序「右上角 … → 更多资料」中查看，也可点下方链接直接打开。
+  </view>
+
+  <view class="doc-links">
+    <text class="doc-link" bindtap="onOpenPrivacyContract">查看微信侧《用户隐私保护指引》</text>
+    <text class="doc-sep">|</text>
+    <text class="doc-link" bindtap="onOpenAgreement">用户协议</text>
+    <text class="doc-sep">|</text>
+    <text class="doc-link" bindtap="onOpenAbout">关于与开源声明</text>
+  </view>
+</view>

@@ -1,0 +1,58 @@
+# ============================================================
+# 登科喵证件照后端 —— 配置（云托管部署时全部由环境变量覆盖，无需改代码）
+#
+#   WX_APPID / WX_SECRET                 小程序 AppID（wx3e149506a33d7e64）与 AppSecret
+#   SPRING_DATASOURCE_URL / _USERNAME / _PASSWORD
+#   PHOTO_JOB_TOKEN                      运维接口口令（换成随机串）
+#   XPHOTO_ENABLED / XPHOTO_OFFER_ID / XPHOTO_APP_KEY / XPHOTO_ENV / XPHOTO_PUSH_TOKEN / XPHOTO_GOODS
+#
+# ⚠️ 安全：默认值一律留空/占位，禁止把真实密钥写进仓库。
+# ============================================================
+server:
+  port: 8080
+
+spring:
+  datasource:
+    # 建议独立库 dkmz_photo（与 exam_countdown 同实例不同库即可；表名也已加 photo_ 前缀防撞）
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  sql:
+    init:
+      mode: always   # 每次启动执行 schema.sql（全部 IF NOT EXISTS，可重复执行）
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+wx:
+  appid: ${WX_APPID:}
+  secret: ${WX_SECRET:}
+  # true = 云托管云调用通道（容器内 http://api.weixin.qq.com 由网关转发，免鉴权且绕过容器证书链问题）
+  # 本地开发设 false 走 https + secret
+  cloud-call: ${WX_CLOUD_CALL:true}
+  # ------------------------------------------------------------
+  # 虚拟支付（道具直购 short_series_goods）
+  # 开通后把下面几项配到云托管环境变量；未配置时 enabled=false，
+  # /api/photo/pay/* 明确返回「支付功能尚未开通」，不影响规格库与免费制作功能。
+  #   XPHOTO_ENABLED        总开关（开通虚拟支付并自测通过后置 true）
+  #   XPHOTO_OFFER_ID       mp 后台「虚拟支付 → 基础配置」的 OfferID
+  #   XPHOTO_APP_KEY        现网 AppKey（密钥！只配环境变量）
+  #   XPHOTO_ENV            0 现网 / 1 沙箱
+  #   XPHOTO_PUSH_TOKEN     mp 后台消息推送 Token（校验推送来源）
+  #   XPHOTO_GOODS          商品 goodsId:priceFen:quota:vipDays:name，多项 ; 分隔
+  # ⚠️ goodsId 与 priceFen 必须与后台「道具管理」完全一致，否则拉起支付被微信拒绝。
+  #    iOS 端可能有最低金额门槛，若报错把单价调到 ≥6 元再试。
+  # ------------------------------------------------------------
+  pay:
+    enabled: ${XPHOTO_ENABLED:false}
+    offer-id: ${XPHOTO_OFFER_ID:}
+    appkey: ${XPHOTO_APP_KEY:}
+    appkey-sandbox: ${XPHOTO_APP_KEY_SANDBOX:}
+    env: ${XPHOTO_ENV:0}
+    push-token: ${XPHOTO_PUSH_TOKEN:}
+    goods: ${XPHOTO_GOODS:photo1:390:1:0:单张高清无水印导出;photo3:690:3:0:规格套装（3 张）;vip1:1990:0:365:年会员（365 天不限张数）}
+
+# 运维/管理接口口令（规格库后台维护、兜底查单、订单总览、权益修数）
+photo:
+  job-token: ${PHOTO_JOB_TOKEN:change-me}

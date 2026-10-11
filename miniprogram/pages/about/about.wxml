@@ -1,0 +1,30 @@
+<view class="doc">
+  <view class="about-hero">
+    <view class="about-badge">照</view>
+    <view>
+      <view class="about-name">{{appName}}</view>
+      <view class="about-ver">版本 {{appVersion}}　·　更新于 {{updatedAt}}</view>
+    </view>
+  </view>
+
+  <view class="doc-p">帮你 3 分钟做出符合报名要求的证件照：选考试 → 自动裁剪构图 → 一键换底色 → 按规格导出。<text class="doc-strong">照片全程在手机本地处理，不上传服务器</text>。</view>
+
+  <view class="doc-h">规格库</view>
+  <view class="doc-p">{{specSource}}版本 v{{meta.version}}，更新于 {{meta.updatedAt}}，数据来源为各考试主管部门、报考点或院校发布的公开公告。</view>
+  <view class="doc-note">{{meta.disclaimer}}</view>
+
+  <view class="doc-h">开源声明</view>
+  <view class="doc-p">本产品使用了以下开源组件，谨向作者与社区致谢：</view>
+  <view class="doc-li">1. <text class="doc-strong">{{modelName}}</text>：端上人像分割模型，许可协议 {{modelLicense}}。来源：{{modelSource}}。模型文件在首次使用时从公共 CDN 下载并缓存在你的手机本地，推理在本地完成。</view>
+  <view class="doc-li">2. 端上推理与设备能力：微信小程序提供的 <text class="doc-strong">wx.createInferenceSession</text>（ONNX 端上推理）与 VisionKit 人脸检测能力。</view>
+  <view class="doc-note">以上开源组件的版权归各自作者所有，其许可协议全文可在相应开源项目仓库中查看。若你是权利人并认为本产品的使用方式不妥，请通过下方方式联系我们。</view>
+
+  <view class="doc-h">联系我们</view>
+  <view class="doc-p">如对本产品有任何建议、问题，或涉及个人信息、版权的诉求，可联系：{{contact}}</view>
+
+  <view class="doc-links">
+    <text class="doc-link" bindtap="onOpenPrivacy">用户隐私保护政策</text>
+    <text class="doc-sep">|</text>
+    <text class="doc-link" bindtap="onOpenAgreement">用户协议</text>
+  </view>
+</view>

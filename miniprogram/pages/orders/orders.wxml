@@ -1,0 +1,65 @@
+<view class="page">
+  <!-- 权益概览 -->
+  <view class="card ent-card" wx:if="{{entitlement}}">
+    <view class="ent-row">
+      <view class="ent-item">
+        <view class="ent-num">{{entitlement.vipActive ? '会员' : entitlement.remaining}}</view>
+        <view class="ent-label">{{entitlement.vipActive ? '不限张数' : '可用高清导出'}}</view>
+      </view>
+      <view class="ent-item">
+        <view class="ent-num">{{entitlement.freeQuota}}</view>
+        <view class="ent-label">免费体验剩余</view>
+      </view>
+      <view class="ent-item">
+        <view class="ent-num">{{entitlement.paidQuota}}</view>
+        <view class="ent-label">已购剩余张数</view>
+      </view>
+    </view>
+    <view class="ent-vip" wx:if="{{entitlement.vipActive}}">会员有效期至 {{entitlement.vipExpireAt}}</view>
+  </view>
+
+  <!-- 未配置云端时给出明确说明，避免用户以为「坏了」 -->
+  <view class="card empty" wx:if="{{!cloudEnabled}}">
+    <view class="empty-title">云端服务未配置</view>
+    <view class="empty-desc">当前为纯本地模式：制作、导出功能均可正常使用，订单与权益信息需连接云托管后查看。</view>
+  </view>
+
+  <view class="card empty" wx:elif="{{loading}}">
+    <view class="empty-title">加载中…</view>
+  </view>
+
+  <view class="card empty" wx:elif="{{error}}">
+    <view class="empty-title">加载失败</view>
+    <view class="empty-desc">{{error}}</view>
+  </view>
+
+  <view class="card empty" wx:elif="{{orders.length === 0}}">
+    <view class="empty-title">暂无订单</view>
+    <view class="empty-desc">购买高清导出或会员后，订单会显示在这里。</view>
+  </view>
+
+  <!-- 订单列表 -->
+  <view class="card order" wx:for="{{orders}}" wx:key="orderId">
+    <view class="order-head">
+      <text class="order-name">{{item.goodsName}}</text>
+      <text class="order-status {{item.statusCls}}">{{item.statusText}}</text>
+    </view>
+    <view class="order-benefit">{{item.benefitText}}</view>
+    <view class="order-line">
+      <text class="order-key">金额</text>
+      <text class="order-val">¥{{item.priceText}}</text>
+    </view>
+    <view class="order-line">
+      <text class="order-key">下单时间</text>
+      <text class="order-val">{{item.timeText}}</text>
+    </view>
+    <view class="order-line" bindtap="onCopyOrderId" data-id="{{item.orderId}}">
+      <text class="order-key">订单号</text>
+      <text class="order-val mono">{{item.orderId}}<text class="copy">复制</text></text>
+    </view>
+  </view>
+
+  <view class="foot-note" wx:if="{{orders.length > 0}}">如有问题，请通过「关于」页的联系方式与我们联系。</view>
+
+  <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+</view>

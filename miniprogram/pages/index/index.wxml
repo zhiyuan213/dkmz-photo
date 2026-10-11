@@ -1,0 +1,59 @@
+<view class="page">
+
+  <view class="hero">
+    <view class="hero-title">考试报名照，3 分钟搞定</view>
+    <view class="hero-sub">选考试 → 自动裁剪 → 一键换底 → 按规格导出</view>
+  </view>
+
+  <view class="search-wrap">
+    <input
+      class="search"
+      placeholder="搜索考试，如：考研 / 教资 / 四六级"
+      value="{{keyword}}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+    />
+    <text class="search-clear" wx:if="{{keyword}}" bindtap="onClearSearch">✕</text>
+  </view>
+
+  <view class="list">
+    <view
+      class="exam-card"
+      wx:for="{{exams}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="onPickExam"
+      hover-class="press"
+    >
+      <view class="exam-main">
+        <view class="exam-name">{{item.name}}</view>
+        <view class="exam-stage">{{item.stage}}</view>
+        <view class="exam-meta">
+          <text class="chip">{{item.bgNames}}</text>
+          <text class="chip">{{item.sizeSummary}}</text>
+        </view>
+      </view>
+      <view class="arrow">›</view>
+    </view>
+
+    <view class="empty" wx:if="{{!exams.length}}">没有匹配的考试，换个关键词试试</view>
+  </view>
+
+  <view class="footer">
+    <view class="footer-meta">{{specSource}} v{{meta.version}} · 更新于 {{meta.updatedAt}}</view>
+    <view class="footer-disclaimer">{{meta.disclaimer}}</view>
+    <view class="footer-orders" bindtap="onOpenOrders">
+      <text>我的订单与权益</text>
+      <text class="footer-orders-arrow">›</text>
+    </view>
+    <view class="footer-links">
+      <text class="footer-link" bindtap="onOpenAbout">关于与开源声明</text>
+      <text class="footer-link-sep">·</text>
+      <text class="footer-link" bindtap="onOpenPrivacy">用户隐私保护政策</text>
+      <text class="footer-link-sep">·</text>
+      <text class="footer-link" bindtap="onOpenAgreement">用户协议</text>
+    </view>
+    <view class="footer-lab" bindtap="onOpenLab">端上引擎自检（开发用）›</view>
+  </view>
+
+</view>

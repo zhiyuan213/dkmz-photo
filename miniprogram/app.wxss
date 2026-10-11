@@ -1,0 +1,163 @@
+page {
+  background: #f2f4f8;
+  font-size: 28rpx;
+  color: #1f2430;
+}
+
+.page {
+  padding: 24rpx 24rpx 80rpx;
+}
+
+.card {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+}
+
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; /* 值折行时，标签与值第一行顶对齐 */
+  padding: 10rpx 0;
+  font-size: 26rpx;
+  color: #5a6474;
+}
+
+/* 标签固定不收缩、顶对齐 */
+.kv > text:first-child {
+  flex-shrink: 0;
+  margin-right: 24rpx;
+  line-height: 1.5;
+}
+
+/* 值最多占行宽 50%，超出即折行，右对齐 */
+.kv .v {
+  flex: 1;
+  max-width: 50%;
+  text-align: right;
+  line-height: 1.5;
+  color: #1f2430;
+  font-weight: 500;
+}
+
+.ok {
+  color: #17a34a;
+}
+
+.bad {
+  color: #d9432f;
+}
+
+.warn {
+  color: #d97706;
+}
+
+.mono {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 22rpx;
+  color: #5a6474;
+  word-break: break-all;
+}
+
+.hint {
+  font-size: 22rpx;
+  color: #8a94a6;
+  line-height: 1.6;
+  margin-top: 10rpx;
+}
+
+.warn-hint {
+  background: #fff7ed;
+  border: 1rpx solid #fed7aa;
+  color: #b45309;
+  border-radius: 12rpx;
+  padding: 12rpx 16rpx;
+}
+
+.btn {
+  background: #2563eb;
+  color: #fff;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  margin-top: 18rpx;
+}
+
+.btn.ghost {
+  background: #eef2f8;
+  color: #35507a;
+}
+
+.btn.danger {
+  background: #fff1ef;
+  color: #d9432f;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+}
+
+.thumbs {
+  display: flex;
+  gap: 16rpx;
+}
+
+.thumb {
+  flex: 1;
+  text-align: center;
+}
+
+.thumb image {
+  width: 100%;
+  height: 320rpx;
+  background: #eef2f8;
+  border-radius: 12rpx;
+}
+
+.thumb .cap {
+  font-size: 22rpx;
+  color: #8a94a6;
+  margin-top: 8rpx;
+}
+
+.metrics {
+  margin-top: 20rpx;
+  border-top: 1rpx solid #eef0f4;
+  padding-top: 16rpx;
+}
+
+.metrics .row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8rpx 0;
+  font-size: 24rpx;
+  color: #5a6474;
+}
+
+.metrics .row.total {
+  color: #1f2430;
+  font-weight: 600;
+}
+
+.log {
+  margin-top: 16rpx;
+  max-height: 360rpx;
+  overflow: auto;
+  background: #f7f8fb;
+  border-radius: 12rpx;
+  padding: 16rpx;
+}
+
+.log .line {
+  font-size: 22rpx;
+  color: #5a6474;
+  line-height: 1.7;
+  word-break: break-all;
+}

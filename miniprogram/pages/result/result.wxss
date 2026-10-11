@@ -1,0 +1,76 @@
+.preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.preview {
+  width: 420rpx;
+  height: 588rpx;
+  background: #eef2f8;
+  border-radius: 16rpx;
+}
+
+.preview-cap {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #5a6474;
+}
+
+.watermark-tip {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #a8b0bd;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  padding: 12rpx 0;
+}
+
+.check-icon {
+  width: 40rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.check-icon.ok {
+  color: #17a34a;
+}
+
+.check-icon.warn {
+  color: #d97706;
+}
+
+.check-icon.bad {
+  color: #d9432f;
+}
+
+.check-body {
+  flex: 1;
+}
+
+.check-k {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.check-v {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #8a94a6;
+  line-height: 1.6;
+}
+
+.note {
+  font-size: 26rpx;
+  color: #5a6474;
+  line-height: 1.8;
+}
+
+.btn.big {
+  font-size: 32rpx;
+  padding: 10rpx 0;
+}

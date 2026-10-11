@@ -1,0 +1,79 @@
+/* 合规文本页公共样式（隐私政策 / 用户协议 / 关于与开源声明 @import 引用） */
+
+.doc {
+  padding: 32rpx 32rpx 80rpx;
+}
+
+.doc-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1f2430;
+  margin-bottom: 8rpx;
+}
+
+.doc-meta {
+  font-size: 24rpx;
+  color: #8b93a1;
+  margin-bottom: 28rpx;
+}
+
+.doc-h {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2430;
+  margin: 34rpx 0 12rpx;
+}
+
+.doc-p {
+  font-size: 27rpx;
+  line-height: 1.78;
+  color: #3a4150;
+  margin-bottom: 12rpx;
+}
+
+.doc-li {
+  font-size: 27rpx;
+  line-height: 1.78;
+  color: #3a4150;
+  margin-bottom: 10rpx;
+}
+
+.doc-strong {
+  font-weight: 600;
+  color: #1f2430;
+}
+
+.doc-link {
+  color: #3b6ef6;
+}
+
+.doc-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 40rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #e6eaf2;
+}
+
+.doc-links .doc-link {
+  font-size: 27rpx;
+  padding: 8rpx 0;
+  margin-right: 8rpx;
+}
+
+.doc-sep {
+  color: #c6ccd8;
+  margin: 0 14rpx;
+  font-size: 24rpx;
+}
+
+.doc-note {
+  margin-top: 36rpx;
+  padding: 20rpx 22rpx;
+  background: #f4f7fd;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #6b7688;
+}

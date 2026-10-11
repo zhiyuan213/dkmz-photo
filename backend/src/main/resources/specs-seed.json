@@ -1,0 +1,435 @@
+{
+  "meta": {
+    "version": "0.3.0",
+    "updatedAt": "2026-10-11",
+    "product": "登科喵证件照",
+    "disclaimer": "各省、各报考点、各院校可能进一步细化要求，且逐年可能调整。产品内必须提示用户「以当次官方公告为准」，本库仅用于预置模板与自动裁剪。",
+    "verifiedFrom": [
+      "研招网 2026 年全国硕士研究生招生考试各报考点网上确认公告",
+      "中小学教师资格考试网（ntce.neea.edu.cn）报名流程与各省笔试公告",
+      "中国教师资格网 教师资格认定公告（照片像素区间要求）",
+      "中央机关及其直属机构 2026 年度考试录用公务员报名确认平台考务问答",
+      "全国大学英语四、六级考试各省级考试院 / 院校报名通知",
+      "公共安全行业标准《机动车驾驶证件》（GA482-2012）5.2.3 与交管12123 电子驾驶证照片要求"
+    ]
+  },
+  "backgrounds": [
+    {
+      "id": "white",
+      "name": "白底",
+      "rgb": [
+        255,
+        255,
+        255
+      ]
+    },
+    {
+      "id": "blue",
+      "name": "蓝底",
+      "rgb": [
+        67,
+        142,
+        219
+      ]
+    },
+    {
+      "id": "lightBlue",
+      "name": "浅蓝底",
+      "rgb": [
+        100,
+        197,
+        255
+      ]
+    },
+    {
+      "id": "red",
+      "name": "红底",
+      "rgb": [
+        184,
+        2,
+        2
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "one-inch",
+      "name": "一寸",
+      "mm": [
+        25,
+        35
+      ],
+      "px": [
+        295,
+        413
+      ]
+    },
+    {
+      "id": "small-one-inch",
+      "name": "小一寸",
+      "mm": [
+        22,
+        32
+      ],
+      "px": [
+        260,
+        378
+      ]
+    },
+    {
+      "id": "large-one-inch",
+      "name": "大一寸",
+      "mm": [
+        33,
+        48
+      ],
+      "px": [
+        390,
+        567
+      ]
+    },
+    {
+      "id": "two-inch",
+      "name": "二寸",
+      "mm": [
+        35,
+        49
+      ],
+      "px": [
+        413,
+        579
+      ]
+    },
+    {
+      "id": "small-two-inch",
+      "name": "小二寸",
+      "mm": [
+        35,
+        45
+      ],
+      "px": [
+        413,
+        531
+      ]
+    },
+    {
+      "id": "large-two-inch",
+      "name": "大二寸",
+      "mm": [
+        35,
+        53
+      ],
+      "px": [
+        413,
+        626
+      ]
+    },
+    {
+      "id": "ratio-3-4",
+      "name": "3:4 比例",
+      "mm": null,
+      "px": [
+        480,
+        640
+      ]
+    },
+    {
+      "id": "cet-192",
+      "name": "四六级小规格",
+      "mm": [
+        33,
+        48
+      ],
+      "px": [
+        144,
+        192
+      ]
+    }
+  ],
+  "exams": [
+    {
+      "id": "kaoyan",
+      "name": "考研（硕士研究生招生考试）",
+      "group": "学历考试",
+      "stage": "网上确认 / 准考证照片",
+      "priority": "P0",
+      "backgrounds": [
+        "white",
+        "blue"
+      ],
+      "backgroundNote": "多数报考点要求白底，部分接受白底或蓝底",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "ratio",
+        "aspectRatio": "3:4",
+        "recommendPx": [
+          480,
+          640
+        ],
+        "sizeRule": "max",
+        "maxSizeKB": 10240,
+        "sizeNote": "建议不超过 10M（各报考点表述为『建议大小不超过 10M』）"
+      },
+      "portrait": {
+        "headShoulderRatio": "头部和肩部占画面 2/3",
+        "eyeLineTopPercent": "30%~50%",
+        "angleToleranceDeg": 10
+      },
+      "notes": [
+        "近三个月内正面、免冠、无妆、彩色头像",
+        "不得佩戴眼镜、隐形眼镜、美瞳",
+        "不得 PS 修改人像特征，不得翻拍",
+        "手持身份证照另需单独上传（本产品暂不做）"
+      ]
+    },
+    {
+      "id": "ntce-written",
+      "name": "教师资格证（笔试报名）",
+      "group": "职业资格",
+      "stage": "笔试报名 · 上传照片",
+      "priority": "P0",
+      "backgrounds": [
+        "white"
+      ],
+      "backgroundNote": "白色背景为佳",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "range",
+        "maxPx": [
+          400,
+          600
+        ],
+        "aspectRatio": "3:4",
+        "recommendPx": [
+          300,
+          400
+        ],
+        "sizeRule": "max",
+        "maxSizeKB": 200,
+        "sizeNote": "不大于 200K，压缩品质系数不低于 60"
+      },
+      "portrait": {
+        "headShoulderRatio": "显示头部和肩的上部",
+        "eyeLineTopPercent": "眼睛距上边沿 200~300 像素（按 150×200 基准）",
+        "faceWidthPx": "180~300 像素",
+        "hairlineTopPx": "50~110 像素"
+      },
+      "notes": [
+        "近 6 个月以内免冠正面彩色证件照",
+        "不得戴帽子、头巾、发带、墨镜",
+        "头发不得遮挡眉毛、眼睛、耳朵",
+        "不得美颜、特效、翻拍",
+        "部分省份公告给出 150×200 像素、比例约 3:4"
+      ]
+    },
+    {
+      "id": "ntce-certify",
+      "name": "教师资格认定",
+      "group": "职业资格",
+      "stage": "认定申报 · 上传照片",
+      "priority": "P1",
+      "backgrounds": [
+        "white"
+      ],
+      "backgroundNote": "必须白底，否则不予认定通过",
+      "image": {
+        "format": [
+          "jpg"
+        ],
+        "pxRule": "range",
+        "minPx": [
+          291,
+          409
+        ],
+        "maxPx": [
+          299,
+          417
+        ],
+        "recommendPx": [
+          295,
+          413
+        ],
+        "sizeRule": "max",
+        "maxSizeKB": 190,
+        "sizeNote": "小于 190K（jpeg/jpg）"
+      },
+      "portrait": {
+        "headShoulderRatio": "免冠正面，头部居中"
+      },
+      "notes": [
+        "公告原文为『宽度大于 290 像素并小于 300 像素，高度大于 408 像素并小于 418 像素』——这是一个很窄的区间，必须精确到 295×413",
+        "体检表粘贴用的一寸照需与电子照同版"
+      ]
+    },
+    {
+      "id": "guokao",
+      "name": "国家公务员考试（国考）",
+      "group": "公职考试",
+      "stage": "报名确认 · 上传照片",
+      "priority": "P0",
+      "backgrounds": [
+        "white",
+        "blue"
+      ],
+      "backgroundNote": "蓝底或白底均可",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "min",
+        "minPx": [
+          295,
+          413
+        ],
+        "recommendPx": [
+          295,
+          413
+        ],
+        "sizeRule": "range",
+        "minSizeKB": 20,
+        "maxSizeKB": 100,
+        "sizeNote": "官方『照片处理工具』处理后约 10KB 左右；未处理不得上传"
+      },
+      "portrait": {
+        "headShoulderRatio": "免冠正面证件照"
+      },
+      "notes": [
+        "必须使用官方『照片处理工具』处理并保存后才能上传",
+        "照片不得美化、修饰",
+        "禁止把小像素照片放大后使用"
+      ]
+    },
+    {
+      "id": "cet",
+      "name": "大学英语四六级（CET）",
+      "group": "学业考试",
+      "stage": "报名 · 上传照片",
+      "priority": "P0",
+      "backgrounds": [
+        "white",
+        "lightBlue"
+      ],
+      "backgroundNote": "纯白或浅蓝二选一；部分院校指定其中一种，无特殊要求优先白底",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "exact",
+        "recommendPx": [
+          295,
+          413
+        ],
+        "altPx": [
+          [
+            144,
+            192
+          ],
+          [
+            480,
+            640
+          ]
+        ],
+        "aspectRatio": "2:3（295×413）或 4:3（192×144）",
+        "sizeRule": "range",
+        "minSizeKB": 20,
+        "maxSizeKB": 200,
+        "sizeNote": "20KB~200KB；部分院校更严（≤100KB / ≤60KB / ≤20KB），以本校通知为准",
+        "dpi": 300,
+        "colorDepth": "24 位真彩色"
+      },
+      "portrait": {
+        "headShoulderRatio": "头部（含颈部）占 7/10、肩部占 1/5",
+        "topMarginRatio": "头上部空 1/10，左右各空 1/10"
+      },
+      "notes": [
+        "后缀须为小写 .jpg",
+        "拍照不得化妆、美瞳、过度美颜，不得遮挡眉眼耳",
+        "部分院校要求文件以身份证号或学号命名，需按本校通知",
+        "成像区尺寸约 48mm×33mm"
+      ]
+    },
+    {
+      "id": "driving-license",
+      "name": "驾驶证 / 电子驾照",
+      "fullName": "机动车驾驶证（含交管12123电子驾照）",
+      "group": "交通证件",
+      "stage": "申领 / 换证 · 交管12123",
+      "priority": "P0",
+      "backgrounds": [
+        "white"
+      ],
+      "backgroundNote": "必须白底（GA482-2012 行标）",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "exact",
+        "recommendPx": [
+          520,
+          756
+        ],
+        "aspectRatio": "22:32（小一寸）",
+        "sizeRule": "max",
+        "maxSizeKB": 300,
+        "sizeNote": "不超过 300KB（交管12123 电子驾照要求）"
+      },
+      "portrait": {
+        "headShoulderRatio": "头部（发顶到下巴）约占照片高度 2/3，头宽约占照片宽度 2/3",
+        "cropFaceRatio": 0.5,
+        "digitalCheck": "头宽 331~378px，头长（发顶到下巴）449~520px"
+      },
+      "notes": [
+        "申请前 6 个月内的直边正面免冠彩色半身照（GA482-2012）",
+        "数字相片有头部尺寸校验：头宽 331~378px、头长 449~520px，制作后请以 12123 预览为准微调",
+        "不得对人像特征做技术处理、不得合成，过度美颜会被驳回",
+        "部分地区办理需『数字照片采集回执』（照相馆/检测平台出具），本产品输出不等于回执",
+        "交管12123 自带拍照功能，若本产品产出被驳回，可用 12123 内拍摄重试"
+      ]
+    },
+    {
+      "id": "generic-red-1inch",
+      "name": "通用一寸 · 红底",
+      "fullName": "通用红底一寸证件照（党团材料 / 学籍档案 / 保险医保等）",
+      "group": "档案材料 / 通用",
+      "stage": "组织关系 / 档案 / 纸质材料",
+      "priority": "P1",
+      "backgrounds": [
+        "red"
+      ],
+      "backgroundNote": "深红 / 枣红底（RGB 184,2,2 照相馆标准色），忌穿红、橙、粉色衣服",
+      "image": {
+        "format": [
+          "jpg",
+          "jpeg"
+        ],
+        "pxRule": "exact",
+        "recommendPx": [
+          295,
+          413
+        ],
+        "aspectRatio": "25:35（一寸，300dpi）",
+        "sizeRule": "max",
+        "maxSizeKB": 500,
+        "sizeNote": "纸质材料多用，无官方体积限制；≤500KB 便于传输与打印"
+      },
+      "portrait": {
+        "headShoulderRatio": "常规证件照构图：头部居中，肩部自然入画"
+      },
+      "notes": [
+        "适用：入党 / 团员组织关系材料、中小学学籍档案、保险医保纸质备案、工作证、部分证书纸质存档",
+        "红底为传统档案用色，具体以接收单位要求为准（电子系统多为白/蓝底）",
+        "一寸照纸质打印约 25×35mm，打印时按原比例出图、勿拉伸",
+        "结婚登记照为红底大二寸双人合影（约 4×6cm），与本模板不同，本产品暂不支持双人照"
+      ]
+    }
+  ]
+}

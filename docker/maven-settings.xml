@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  构建期 Maven 配置：把中央仓库换成国内镜像
+  背景：腾讯云构建机出口 IP 访问 repo.maven.apache.org 会被 429 限流，
+        改用腾讯云内网镜像后构建稳定且更快。
+  用法：Dockerfile 中 COPY 到 /root/.m2/settings.xml
+  若某个依赖在腾讯云镜像缺失，可把 url 换成阿里云：
+        https://maven.aliyun.com/repository/public
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>tencent-cloud-mirror</id>
+      <name>Tencent Cloud Maven Mirror</name>
+      <url>https://mirrors.cloud.tencent.com/nexus/repository/maven-public/</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>

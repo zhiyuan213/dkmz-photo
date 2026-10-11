@@ -1,0 +1,20 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/make/make",
+    "pages/result/result",
+    "pages/orders/orders",
+    "pages/lab/index",
+    "pages/about/about",
+    "pages/privacy/privacy",
+    "pages/agreement/agreement"
+  ],
+  "window": {
+    "navigationBarTitleText": "登科喵证件照",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f2f4f8"
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2"
+}

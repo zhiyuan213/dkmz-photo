@@ -1,0 +1,82 @@
+<view class="page" wx:if="{{exam}}">
+
+  <!-- 考试规格 -->
+  <view class="card">
+    <view class="card-title">{{exam.name}}</view>
+    <view class="kv"><text>适用阶段</text><text class="v">{{exam.stage}}</text></view>
+    <view class="kv"><text>推荐尺寸</text><text class="v">{{exam.image.recommendPx[0]}} × {{exam.image.recommendPx[1]}} px</text></view>
+    <view class="kv"><text>体积要求</text><text class="v">{{exam.image.sizeNote}}</text></view>
+    <view class="kv"><text>底色说明</text><text class="v">{{exam.backgroundNote}}</text></view>
+  </view>
+
+  <!-- 底色选择 -->
+  <view class="card">
+    <view class="card-title">底色</view>
+    <view class="bg-row">
+      <view
+        class="bg-item {{bgIndex === index ? 'active' : ''}}"
+        wx:for="{{bgOptions}}"
+        wx:key="id"
+        bindtap="onBgChange"
+        data-index="{{index}}"
+      >
+        <view class="bg-swatch" style="background: {{item.hex}}"></view>
+        <view class="bg-name">{{item.name}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 引擎状态 -->
+  <view class="card">
+    <view class="kv">
+      <text>端上引擎</text>
+      <text class="{{modelReady ? 'ok' : modelError ? 'bad' : 'warn'}}">{{modelStateText}}</text>
+    </view>
+    <view class="hint" wx:if="{{modelError}}">失败原因：{{modelError}}（点击下方按钮重试）</view>
+  </view>
+
+  <!-- 主操作 -->
+  <view class="card">
+    <button class="btn big" bindtap="onPickPhoto" disabled="{{busy}}">
+      {{busy ? '制作中…' : srcPath ? '重新选照片' : '拍照 / 从相册选照片'}}
+    </button>
+
+    <view class="steps" wx:if="{{busy}}">
+      <view class="step" wx:for="{{steps}}" wx:key="key">
+        <text class="dot {{item.state}}"></text>
+        <text class="step-label {{item.state}}">{{item.label}}</text>
+      </view>
+    </view>
+
+    <view class="hint">照片仅在手机本地处理，不会上传。</view>
+    <view class="hint">建议半身照（胸像以上、离镜头 0.5~1 米）：人脸太近会导致裁剪过满、头顶留白不足。</view>
+  </view>
+
+  <!-- 规格注意事项 -->
+  <view class="card">
+    <view class="card-title">拍摄要求</view>
+    <view class="note" wx:for="{{exam.notes}}" wx:key="*this">· {{item}}</view>
+    <view class="hint">{{exam.image.sizeNote}}</view>
+  </view>
+
+  <!-- 内嵌相机层：默认前置摄像头，可翻转 -->
+  <view class="camera-layer" wx:if="{{cameraVisible}}">
+    <camera
+      class="camera"
+      device-position="{{devicePosition}}"
+      flash="off"
+      frame-size="medium"
+      binderror="onCameraError"
+    >
+      <cover-view class="cam-guide" style="{{camFrameStyle}}"></cover-view>
+      <cover-view class="cam-guide-tip" style="{{camFrameStyle}}">人脸贴入框内 · 头顶留一指宽</cover-view>
+      <cover-view class="cam-tip">正面半身入画 · 光线均匀 · 距镜头 0.5~1 米</cover-view>
+      <cover-view class="cam-actions">
+        <cover-view class="cam-side" bindtap="onCameraCancel">取消</cover-view>
+        <cover-view class="cam-shutter {{snapping ? 'busy' : ''}}" bindtap="onCameraSnap"></cover-view>
+        <cover-view class="cam-side" bindtap="onCameraFlip">翻转</cover-view>
+      </cover-view>
+    </camera>
+  </view>
+
+</view>

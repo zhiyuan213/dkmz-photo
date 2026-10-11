@@ -1,0 +1,40 @@
+<view class="doc">
+  <view class="doc-title">用户协议</view>
+  <view class="doc-meta">更新日期：{{updatedAt}}　·　生效日期：{{updatedAt}}</view>
+
+  <view class="doc-p">欢迎使用「{{appName}}」。本协议是你与本产品开发者之间就使用本产品所达成的约定。请在使用前仔细阅读；你开始使用本产品，即表示你已阅读并同意本协议全部内容。</view>
+
+  <view class="doc-h">一、服务内容</view>
+  <view class="doc-p">本产品是一款在微信内运行的证件照制作工具，提供「选择/拍摄照片 → 按考试规格自动裁剪构图 → 一键更换底色 → 按规格校验并导出」等功能。照片处理在你的手机本地完成。</view>
+
+  <view class="doc-h">二、使用规范</view>
+  <view class="doc-li">1. 你应保证所处理的照片为本人照片，或已取得被拍摄者的合法授权；不得上传、制作含有违法、违规或侵犯他人权益内容的照片。</view>
+  <view class="doc-li">2. 你不得利用本产品从事任何违反法律法规、侵犯他人合法权益或干扰平台正常运行的行为。</view>
+  <view class="doc-li">3. 你应妥善保管自己的设备与账号，因设备或账号管理不当造成的损失由你自行承担。</view>
+
+  <view class="doc-h">三、规格数据与免责声明</view>
+  <view class="doc-li">1. 本产品内置的各类考试证件照规格（尺寸、底色、文件大小、格式等）来源于各考试主管部门、报考点或院校发布的公开公告，并标注了更新时间。</view>
+  <view class="doc-li">2. <text class="doc-strong">各省、各报考点、各院校可能进一步细化要求，且要求可能逐年调整。本产品按官方公告预置模板，仅供参考，请以当次官方公告为准。</text></view>
+  <view class="doc-li">3. 你在提交报名材料前，应自行核对当次官方公告对照片的要求。<text class="doc-strong">因未核对官方公告、使用与本产品内置规格不一致的要求而导致的报名问题，本产品不承担责任。</text></view>
+
+  <view class="doc-h">四、知识产权</view>
+  <view class="doc-p">本产品的界面、代码与文案等归开发者所有。本产品使用的开源组件（如人像分割模型 MODNet，Apache-2.0 许可）遵循其各自的开源许可协议，详见「关于与开源声明」。</view>
+
+  <view class="doc-h">五、服务的变更、中止与终止</view>
+  <view class="doc-p">我们可能因功能升级、维护或不可抗力等原因，对服务内容进行调整、中止或终止。对于重大变更，我们会通过小程序内提示等合理方式告知你。</view>
+
+  <view class="doc-h">六、免责与责任限制</view>
+  <view class="doc-p">在法律允许的范围内，因你自身设备、网络环境或未按官方要求使用照片等原因造成的损失，本产品不承担责任。本产品将尽合理努力保证服务稳定与规格数据准确，但不排除出现个别错误。</view>
+
+  <view class="doc-h">七、法律适用与争议解决</view>
+  <view class="doc-p">本协议适用中华人民共和国法律。因本协议产生的争议，双方应友好协商解决；协商不成的，可依法向有管辖权的人民法院提起诉讼。</view>
+
+  <view class="doc-h">八、联系我们</view>
+  <view class="doc-p">如你对本协议有任何疑问，可联系：{{contact}}</view>
+
+  <view class="doc-links">
+    <text class="doc-link" bindtap="onOpenPrivacy">用户隐私保护政策</text>
+    <text class="doc-sep">|</text>
+    <text class="doc-link" bindtap="onOpenAbout">关于与开源声明</text>
+  </view>
+</view>

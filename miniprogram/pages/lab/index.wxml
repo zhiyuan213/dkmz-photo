@@ -1,0 +1,115 @@
+<view class="page">
+
+  <!-- ① 环境自检 -->
+  <view class="card">
+    <view class="card-title">① 环境自检</view>
+    <view class="kv"><text>基础库版本</text><text class="v">{{env.sdkVersion}}</text></view>
+    <view class="kv"><text>机型</text><text class="v">{{env.device}}</text></view>
+    <view class="kv">
+      <text>端上推理 createInferenceSession</text>
+      <text class="{{env.hasInference ? 'ok' : 'bad'}}">{{env.hasInference ? '可用' : '不可用（需 2.30.0+）'}}</text>
+    </view>
+    <view class="kv">
+      <text>VisionKit 人脸检测</text>
+      <text class="{{env.hasVK ? 'ok' : 'bad'}}">{{env.hasVK ? '可用' : '不可用（需 2.25.0+）'}}</text>
+    </view>
+    <view class="kv">
+      <text>离屏 canvas 2d</text>
+      <text class="{{env.hasOffscreen ? 'ok' : 'bad'}}">{{env.hasOffscreen ? '可用' : '不可用'}}</text>
+    </view>
+    <view class="kv"><text>输出规格（本 demo 固定）</text><text class="v">295 × 413（标准一寸）</text></view>
+  </view>
+
+  <!-- ② 模型 -->
+  <view class="card">
+    <view class="card-title">② 模型准备</view>
+    <view class="hint warn-hint" wx:if="{{env.isDevtools}}">⚠️ 模拟器不支持端上推理，请点工具栏「预览」扫码，用手机真机跑通本页。</view>
+    <picker range="{{variantLabels}}" value="{{variantIndex}}" bindchange="onVariantChange">
+      <view class="kv">
+        <text>模型档位</text>
+        <text class="v">{{variantLabels[variantIndex]}} ›</text>
+      </view>
+    </picker>
+    <view class="kv">
+      <text>本地缓存</text>
+      <text class="v">{{modelStateText}}</text>
+    </view>
+    <view class="kv"><text>推理会话</text><text class="{{sessionReady ? 'ok' : 'warn'}}">{{sessionReady ? '已加载 ' + loadMs + 'ms' : '未加载'}}</text></view>
+    <button class="btn" bindtap="onPrepareModel" disabled="{{busy || !env.hasInference}}">下载并加载模型</button>
+    <button class="btn ghost" bindtap="onClearModel" disabled="{{busy}}">清除本地模型缓存</button>
+    <view class="hint">模型 6~25MB，小程序单包上限 2MB，必须运行时下载。首次会走完进度，之后走本地缓存秒开。iOS 端首次下载可能较慢。</view>
+  </view>
+
+  <!-- ③ 运行参数 -->
+  <view class="card">
+    <view class="card-title">③ 运行参数（用于测速度 / 效果权衡）</view>
+    <picker range="{{precisionLabels}}" value="{{precisionIndex}}" bindchange="onPrecisionChange">
+      <view class="kv"><text>推理精度</text><text class="v">{{precisionLabels[precisionIndex]}} ›</text></view>
+    </picker>
+    <picker range="{{shortEdgeLabels}}" value="{{shortEdgeIndex}}" bindchange="onShortEdgeChange">
+      <view class="kv"><text>推理短边</text><text class="v">{{shortEdgeLabels[shortEdgeIndex]}} ›</text></view>
+    </picker>
+    <picker range="{{bgLabels}}" value="{{bgIndex}}" bindchange="onBgChange">
+      <view class="kv"><text>换底色</text><text class="v">{{bgLabels[bgIndex]}} ›</text></view>
+    </picker>
+    <view class="hint">precisionLevel 越低速度越快、精度可能下降（0=fp16、4=fp32 关闭近似计算）。短边越大边缘越细腻但耗时明显上升，建议先从 384 起测。</view>
+  </view>
+
+  <!-- ④ 执行 -->
+  <view class="card">
+    <view class="card-title">④ 执行</view>
+    <button class="btn" bindtap="onPickAndRun" disabled="{{busy}}">选照片，开始制作</button>
+    <button class="btn ghost" bindtap="onTestFace" disabled="{{busy}}">单独测人脸检测</button>
+    <view class="hint">抠图链路：选图 → 预处理（缩放到 32 倍数 + 归一化）→ 端上推理出 alpha 蒙版 → 双线性上采样 → 与原图/底色合成 → 导出 JPG。</view>
+  </view>
+
+  <!-- ⑤ 结果 -->
+  <view class="card" wx:if="{{srcPath}}">
+    <view class="card-title">⑤ 结果</view>
+    <view class="thumbs">
+      <view class="thumb">
+        <image src="{{srcPath}}" mode="aspectFit" bindtap="onPreview" data-src="{{srcPath}}" />
+        <view class="cap">原图</view>
+      </view>
+      <view class="thumb">
+        <image src="{{maskPath}}" mode="aspectFit" bindtap="onPreview" data-src="{{maskPath}}" />
+        <view class="cap">alpha 蒙版 {{maskShape}}</view>
+      </view>
+      <view class="thumb">
+        <image src="{{outPath}}" mode="aspectFit" bindtap="onPreview" data-src="{{outPath}}" />
+        <view class="cap">换底结果 295×413 {{outKB}}KB</view>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{maskRange}}">模型原始输出值域 [{{maskRange}}]{{isLogits ? ' → 已按 logits 套 sigmoid' : ''}}</view>
+    <view class="metrics">
+      <view class="row" wx:for="{{metrics}}" wx:key="k">
+        <text>{{item.k}}</text>
+        <text>{{item.v}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- VisionKit 人脸检测结果 -->
+  <view class="card" wx:if="{{facePath}}">
+    <view class="card-title">人脸检测结果</view>
+    <image src="{{facePath}}" mode="widthFix" style="width:100%;border-radius:12rpx" bindtap="onPreview" data-src="{{facePath}}" />
+    <view class="kv"><text>检出人脸数</text><text class="v">{{faceCount}}</text></view>
+    <view class="metrics">
+      <view class="row" wx:for="{{faceRows}}" wx:key="k">
+        <text>{{item.k}}</text>
+        <text>{{item.v}}</text>
+      </view>
+    </view>
+    <view class="hint">用于验证「自动构图」的输入是否可靠：人脸框 + 106 关键点是否稳定、耗时多少。</view>
+  </view>
+
+  <!-- 日志 -->
+  <view class="card">
+    <view class="card-title">运行日志</view>
+    <view class="log">
+      <view class="line" wx:for="{{logs}}" wx:key="i">{{item}}</view>
+      <view class="line" wx:if="{{!logs.length}}">（暂无）</view>
+    </view>
+  </view>
+
+</view>
