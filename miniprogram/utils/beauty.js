@@ -2,7 +2,9 @@
  * 证件照美化（照相馆式修图）—— 纯端上像素运算，无额外模型依赖
  *
  * 三个维度，各 3 档（1 轻 / 2 中 / 3 强）：
- *   whiten 美白：温和白平衡 + 提亮 + 去黄（保留血色，不降饱和 → 不发灰）
+ *   whiten 美白：频率分离——低频（肤色底子）白平衡去黄 + 提亮 + 降饱和，
+ *                高频（五官细节）原样保留 → 白而有轮廓，不是「白雾脸」。
+ *                参数按「最美证件照」参照物量化标定（Y≈185/黄度≈27/R-B≈44）
  *   smooth 磨皮：保边平滑（guided filter）+ 频率分离祛痘
  *   hair   黑发：白发（高亮 + 低饱和）向深灰收缩，黑发完全不动
  *
@@ -22,12 +24,15 @@
  */
 
 // ---------------------------------------------------------------- 档位参数
-// 下标 = 档位：0=关、1=轻、2=中、3=强。与 tools/whiten_lab.py、whiten v6/v7 对齐。
+// 下标 = 档位：0=关、1=轻、2=中、3=强。
+// 美白参数以「最美证件照」参照物标定（量化：亮度Y≈185 / 黄度≈27 / R-B≈44）：
+//   轻 Y≈164、中 Y≈180（=参照物水平，默认）、强 Y≈190。
 
-/** 美白：k = 提亮系数；wb = 白平衡强度（灰世界比例）；dy = 去黄强度（B+ R/G-） */
-const WHITEN_K = [1.0, 0.8, 0.68, 0.6];
-const WHITEN_WB = [0, 0.25, 0.3, 0.32];
-const WHITEN_DY = [0, 4, 7, 10];
+/** 美白：k = 提亮系数；wb = 白平衡强度（灰世界比例）；dy = 去黄强度（B+ R/G-）；dsat = 降饱和（收敛红调） */
+const WHITEN_K = [1.0, 0.62, 0.5, 0.42];
+const WHITEN_WB = [0, 0.3, 0.35, 0.4];
+const WHITEN_DY = [0, 6, 8, 10];
+const WHITEN_DSAT = [0, 0, 0.05, 0.1];
 
 /** 磨皮：r = 滤波半径；eps = 保边阈值（越大越平滑）；blemish = 祛痘强度（0~255 高频截断） */
 const SMOOTH_R = [0, 3, 5, 7];
@@ -216,28 +221,43 @@ function stepSmooth(data, w, h, n, mask, level) {
 }
 
 /**
- * 美白（v7 RGB 域实现，与 Lab 版视觉等价、无需色彩空间转换）：
- * ① 温和白平衡（mask 内灰世界，按 wb 比例）—— 去黄的主力
- * ② Y soft-clip 提亮（暗部多提、亮部少提，不过曝）
- * ③ RGB 去黄（B+ / R- G-）—— 辅助
- * 不做全通道去饱和（那是第一版发灰的根因），血色保留。
+ * 美白（v8 频率分离版，按「最美证件照」参照物标定）：
+ *   低频（肤色底子）：白平衡去黄 + Y soft-clip 提亮 + RGB 去黄 + 轻度降饱和
+ *   高频（五官阴影/轮廓细节）：原样加回，不提亮
+ * 解决整图提亮的「白雾脸」问题——参照物是「白但有妆感、有轮廓」，本质是
+ * 只提底子、保住细节层对比度。
  */
-function stepWhiten(data, w, h, n, mask, level) {
+function stepWhiten(data, w, h, n, mask, face, level) {
   const k = WHITEN_K[level];
   if (k >= 1) return;
   const wb = WHITEN_WB[level];
   const dy = WHITEN_DY[level];
+  const dsat = WHITEN_DSAT[level];
 
-  // 白平衡 gain（mask>0.55 的灰世界统计）
+  // ---- 频率分离：base = 大半径模糊（~6% 脸宽）；detail = 原图 - base ----
+  const rBase = Math.max(3, Math.round((face ? face.width : Math.min(w, h) * 0.4) * 0.06));
+  const bR = new Float32Array(n);
+  const bG = new Float32Array(n);
+  const bB = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    bR[i] = data[p];
+    bG[i] = data[p + 1];
+    bB[i] = data[p + 2];
+  }
+  const baseR = blur2(bR, w, h, rBase);
+  const baseG = blur2(bG, w, h, rBase);
+  const baseB = blur2(bB, w, h, rBase);
+
+  // 白平衡 gain（base 层 mask>0.55 的灰世界统计）
   let sb = 0;
   let sg = 0;
   let sr = 0;
   let cnt = 0;
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
+  for (let i = 0; i < n; i++) {
     if (mask[i] > 0.55) {
-      sb += data[p + 2];
-      sg += data[p + 1];
-      sr += data[p];
+      sb += baseB[i];
+      sg += baseG[i];
+      sr += baseR[i];
       cnt++;
     }
   }
@@ -254,24 +274,35 @@ function stepWhiten(data, w, h, n, mask, level) {
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     const wgt = mask[i];
     if (wgt <= 0.01) continue;
-    const r0 = data[p];
-    const g0 = data[p + 1];
-    const b0 = data[p + 2];
-    const r = r0 * gr;
-    const g = g0 * gg;
-    const b = b0 * gb;
+    // base 层做美白
+    let r = baseR[i] * gr;
+    let g = baseG[i] * gg;
+    let b = baseB[i] * gb;
     const Y = 0.299 * r + 0.587 * g + 0.114 * b;
     const Y2 = 255 - (255 - Y) * k;
     const ratio = Y > 1 ? Y2 / Y : 1;
-    let r2 = r * ratio - dy * 0.4;
-    let g2 = g * ratio - dy * 0.4;
-    let b2 = b * ratio + dy;
-    r2 = r2 < 0 ? 0 : r2 > 255 ? 255 : r2;
-    g2 = g2 < 0 ? 0 : g2 > 255 ? 255 : g2;
-    b2 = b2 < 0 ? 0 : b2 > 255 ? 255 : b2;
-    data[p] = r0 + (r2 - r0) * wgt;
-    data[p + 1] = g0 + (g2 - g0) * wgt;
-    data[p + 2] = b0 + (b2 - b0) * wgt;
+    r *= ratio;
+    g *= ratio;
+    b *= ratio;
+    b += dy;
+    r -= dy * 0.4;
+    g -= dy * 0.4;
+    if (dsat > 0) {
+      const mean = (r + g + b) / 3;
+      r += (mean - r) * dsat;
+      g += (mean - g) * dsat;
+      b += (mean - b) * dsat;
+    }
+    // 高频细节原样加回（原图 - base，未经美白 → 保住五官立体感）
+    r += data[p] - baseR[i];
+    g += data[p + 1] - baseG[i];
+    b += data[p + 2] - baseB[i];
+    r = r < 0 ? 0 : r > 255 ? 255 : r;
+    g = g < 0 ? 0 : g > 255 ? 255 : g;
+    b = b < 0 ? 0 : b > 255 ? 255 : b;
+    data[p] += (r - data[p]) * wgt;
+    data[p + 1] += (g - data[p + 1]) * wgt;
+    data[p + 2] += (b - data[p + 2]) * wgt;
   }
 }
 
@@ -373,7 +404,7 @@ function applyBeauty(data, w, h, opt) {
   }
   if (whiten) {
     const t0 = now();
-    stepWhiten(data, w, h, n, mask, whiten);
+    stepWhiten(data, w, h, n, mask, o.face || null, whiten);
     t.whiten = now() - t0;
   }
   if (hair) {
