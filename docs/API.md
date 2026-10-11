@@ -173,6 +173,13 @@ body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
 | `XPHOTO_PUSH_TOKEN` | mp 后台消息推送 Token（校验推送来源） |
 | `XPHOTO_GOODS` | 商品配置（见上） |
 
+连接串完整示例（**`characterEncoding` 必须写 Java 编码名 `UTF-8`**，
+写 `utf8mb4` 会让驱动抛 `Unsupported character encoding 'utf8mb4'` 导致服务启动失败）：
+
+```
+jdbc:mysql://<内网地址>:3306/dkmz_photo?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false
+```
+
 ## 五、数据库
 
 启动时执行 `backend/src/main/resources/schema.sql`（`sql.init.mode=always`），
