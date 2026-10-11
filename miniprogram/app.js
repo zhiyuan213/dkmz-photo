@@ -14,13 +14,8 @@ App({
     };
 
     // 云托管初始化（未配 ENV_ID 时静默跳过，全部功能走内置数据）
-    if (api.ENV_ID && wx.cloud) {
-      try {
-        wx.cloud.init({ env: api.ENV_ID, traceUser: true });
-      } catch (e) {
-        console.warn('[photo][app] wx.cloud.init 失败', e);
-      }
-    }
+    // 真正的 init 由 api.js 的 ensureInit 统一负责（懒初始化），这里提前触发一次即可
+    api.ensureInit();
 
     // 规格库：先用本地缓存（同步，秒开），再静默向云端要更新
     specs.loadCache();

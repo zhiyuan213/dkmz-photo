@@ -12,7 +12,7 @@
  */
 
 /** 云托管环境 ID（mp 后台 → 云托管 → 环境设置 里那一串） */
-const ENV_ID = '';
+const ENV_ID = 'dkmz-backend-d9gp2f0tq91ad9ff4';
 /** 云托管服务名（控制台创建服务时填的名字） */
 const SERVICE = 'dkmz-backend';
 /** 公网域名兜底（不填则不用这条通道），例如 https://dkmz-backend-xxx.sh.run.tcloudbase.com */
@@ -22,6 +22,22 @@ const BASE_URL = '';
 const USE_MOCK = false;
 
 const TIMEOUT = 12000;
+
+/**
+ * 云托管初始化（懒初始化，只做一次）。
+ * 放在真正发起调用前执行，不依赖 app.js 的加载时序 —— 与 exam-countdown 已跑通的写法一致。
+ */
+let inited = false;
+function ensureInit() {
+  if (inited || USE_MOCK) return;
+  if (!ENV_ID || !wx.cloud || !wx.cloud.init) return;
+  try {
+    wx.cloud.init({ env: ENV_ID, traceUser: true });
+    inited = true;
+  } catch (e) {
+    console.warn('[photo][api] wx.cloud.init 失败', e);
+  }
+}
 
 function cloudReady() {
   return !USE_MOCK && !!ENV_ID && !!wx.cloud && !!wx.cloud.callContainer;
@@ -44,6 +60,7 @@ function call(path, method = 'GET', data = {}) {
       return;
     }
     if (cloudReady()) {
+      ensureInit();
       wx.cloud.callContainer({
         config: { env: ENV_ID },
         path,
@@ -162,6 +179,7 @@ function isCloudEnabled() {
 
 module.exports = {
   call,
+  ensureInit,
   fetchSpecs,
   fetchSpecVersion,
   fetchSpec,
