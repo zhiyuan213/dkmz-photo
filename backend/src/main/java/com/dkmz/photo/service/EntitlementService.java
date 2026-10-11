@@ -220,6 +220,26 @@ public class EntitlementService {
         log.info("vip_expire_at 原子回退 openid={} days={}", openid, days);
     }
 
+    /** 管理端：权益明细（含完整 openid，供修数接口使用；需 token，不对外暴露） */
+    public Map<String, Object> adminList() {
+        java.util.List<Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (PhotoEntitlement e : entMapper.selectList(new QueryWrapper<PhotoEntitlement>()
+                .orderByDesc("updated_at").last("limit 100"))) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("openid", e.getOpenid());
+            m.put("freeQuota", e.getFreeQuota());
+            m.put("paidQuota", e.getPaidQuota());
+            m.put("vipExpireAt", e.getVipExpireAt() == null ? null : e.getVipExpireAt().toString());
+            m.put("updatedAt", e.getUpdatedAt() == null ? null : e.getUpdatedAt().toString());
+            rows.add(m);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("count", rows.size());
+        out.put("rows", rows);
+        return out;
+    }
+
     /** 管理端修数：直接设置张数与会员天数 */
     public Map<String, Object> adminSet(String openid, Integer paidQuota, Integer vipDays) {
         ensure(openid);

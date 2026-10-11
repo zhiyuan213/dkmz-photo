@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -166,7 +167,16 @@ public class PhotoPayController {
         return payService.adminOverview();
     }
 
-    @PostMapping("/pay/admin/entitlement")
+    @GetMapping("/pay/admin/entitlements")
+    public Map<String, Object> adminListEntitlements(@RequestParam(required = false) String token) {
+        if (!jobToken.equals(token)) {
+            return Map.of("ok", false, "msg", "token 无效");
+        }
+        return entitlementService.adminList();
+    }
+
+    /** GET/POST 都支持：运维阶段浏览器直接打开链接即可修数，免 curl */
+    @RequestMapping(value = "/pay/admin/entitlement", method = { RequestMethod.GET, RequestMethod.POST })
     public Map<String, Object> adminSetEntitlement(@RequestParam(required = false) String token,
                                                    @RequestParam(required = false) String openid,
                                                    @RequestParam(required = false) Integer paidQuota,
