@@ -6,6 +6,12 @@ Page({
     exams: [],
     meta: specs.META,
     specSource: specs.sourceInfo().sourceText,
+    bannerOk: true,
+  },
+
+  /** 头图横幅加载失败 → 回退文字版头（本地包内资源一般不会失败，防御性兜底） */
+  onBannerError() {
+    if (this.data.bannerOk) this.setData({ bannerOk: false });
   },
 
   onLoad() {

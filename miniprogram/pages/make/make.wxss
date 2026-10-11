@@ -13,8 +13,8 @@
 }
 
 .bg-item.active {
-  border-color: #2563eb;
-  background: #f0f5ff;
+  border-color: #0d60f8;
+  background: #edf4fe;
 }
 
 .bg-swatch {
@@ -54,7 +54,7 @@
 }
 
 .dot.doing {
-  background: #2563eb;
+  background: #0d60f8;
   animation: blink 1s infinite;
 }
 
@@ -74,7 +74,7 @@
 }
 
 .step-label.doing {
-  color: #2563eb;
+  color: #0d60f8;
   font-weight: 600;
 }
 

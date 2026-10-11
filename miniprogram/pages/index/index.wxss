@@ -1,3 +1,11 @@
+/* 头图横幅：全出血（抵消 .page 左右 padding），宽度补 48rpx，高度随比例 */
+.hero-banner {
+  display: block;
+  width: calc(100% + 48rpx);
+  margin: 0 -24rpx 24rpx;
+}
+
+/* 横幅加载失败时的文字版头（兜底） */
 .hero {
   padding: 40rpx 8rpx 28rpx;
 }
@@ -24,7 +32,7 @@
   border-radius: 16rpx;
   padding: 20rpx 70rpx 20rpx 24rpx;
   font-size: 28rpx;
-  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+  box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
 }
 
 .search-clear {
@@ -44,7 +52,7 @@
   border-radius: 20rpx;
   padding: 28rpx 24rpx;
   margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+  box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
 }
 
 .exam-card.press {
@@ -77,8 +85,8 @@
 
 .chip {
   font-size: 22rpx;
-  color: #35507a;
-  background: #eef2f8;
+  color: #2e7cf6;
+  background: #e9f2fd;
   border-radius: 8rpx;
   padding: 4rpx 12rpx;
 }
@@ -127,12 +135,12 @@
   align-items: center;
   justify-content: center;
   font-size: 25rpx;
-  color: #4a90e2;
+  color: #0d60f8;
 }
 
 .footer-orders-arrow {
   margin-left: 8rpx;
-  color: #a9bbd6;
+  color: #a9c3f0;
 }
 
 /* 页脚合规入口：关于 / 隐私政策 / 用户协议 */
@@ -146,7 +154,7 @@
 
 .footer-link {
   font-size: 24rpx;
-  color: #6b8fe8;
+  color: #5b8df0;
   padding: 6rpx 0;
 }
 

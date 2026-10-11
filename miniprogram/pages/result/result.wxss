@@ -7,7 +7,7 @@
 .preview {
   width: 420rpx;
   height: 588rpx;
-  background: #eef2f8;
+  background: #edf3fc;
   border-radius: 16rpx;
 }
 

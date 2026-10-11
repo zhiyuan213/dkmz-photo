@@ -13,7 +13,7 @@
     "navigationBarTitleText": "登科喵证件照",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f2f4f8"
+    "backgroundColor": "#f1f5fb"
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2"

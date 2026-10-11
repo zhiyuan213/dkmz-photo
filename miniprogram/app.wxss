@@ -1,5 +1,12 @@
+/*
+ * 全局配色（2026-10-11 按双机设计稿采样定稿）：
+ *   主蓝   #0D60F8  主按钮 / 选中态 / 强调文字 / 进行中圆点
+ *   页面底 #F1F5FB  冷调浅蓝灰，与首页横幅底色 #EFF6FD 衔接
+ *   浅蓝底 #E9F2FD  列表小标签；#EDF3FC 中性浅底（ghost 按钮/占位图）
+ *   语义色不变：成功 #17A34A / 警告 #D97706 / 错误 #D9432F
+ */
 page {
-  background: #f2f4f8;
+  background: #f1f5fb;
   font-size: 28rpx;
   color: #1f2430;
 }
@@ -13,7 +20,7 @@ page {
   border-radius: 20rpx;
   padding: 24rpx;
   margin-bottom: 24rpx;
-  box-shadow: 0 2rpx 12rpx rgba(31, 36, 48, 0.05);
+  box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
 }
 
 .card-title {
@@ -83,7 +90,7 @@ page {
 }
 
 .btn {
-  background: #2563eb;
+  background: #0d60f8;
   color: #fff;
   border-radius: 16rpx;
   font-size: 28rpx;
@@ -91,7 +98,7 @@ page {
 }
 
 .btn.ghost {
-  background: #eef2f8;
+  background: #edf3fc;
   color: #35507a;
 }
 
@@ -117,7 +124,7 @@ page {
 .thumb image {
   width: 100%;
   height: 320rpx;
-  background: #eef2f8;
+  background: #edf3fc;
   border-radius: 12rpx;
 }
 

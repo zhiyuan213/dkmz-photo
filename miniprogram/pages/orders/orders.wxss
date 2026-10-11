@@ -4,7 +4,7 @@
 
 /* ---------- 权益概览 ---------- */
 .ent-card {
-  background: linear-gradient(135deg, #4a90e2, #3573d6);
+  background: linear-gradient(135deg, #3b82f6, #0d60f8);
   color: #fff;
 }
 
@@ -74,7 +74,7 @@
 .order-benefit {
   margin: 12rpx 0 16rpx;
   font-size: 26rpx;
-  color: #4a90e2;
+  color: #0d60f8;
 }
 
 .order-line {
@@ -99,7 +99,7 @@
 
 .copy {
   margin-left: 12rpx;
-  color: #4a90e2;
+  color: #0d60f8;
 }
 
 /* ---------- 空态 ---------- */

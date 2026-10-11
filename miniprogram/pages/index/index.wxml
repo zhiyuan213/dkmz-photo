@@ -1,6 +1,15 @@
 <view class="page">
 
-  <view class="hero">
+  <!-- 头图横幅（设计稿裁切，含主标题/流程/卖点；全出血铺满屏幕宽） -->
+  <image
+    wx:if="{{bannerOk}}"
+    class="hero-banner"
+    src="/assets/banner-hero.jpg"
+    mode="widthFix"
+    binderror="onBannerError"
+  />
+  <!-- 横幅加载失败时回退文字版头，避免开天窗 -->
+  <view class="hero" wx:else>
     <view class="hero-title">考试报名照，3 分钟搞定</view>
     <view class="hero-sub">选考试 → 自动裁剪 → 一键换底 → 按规格导出</view>
   </view>
