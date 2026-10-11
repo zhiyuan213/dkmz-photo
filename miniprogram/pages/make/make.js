@@ -12,22 +12,14 @@ const STEPS = [
   { key: 'size', label: '按规格导出' },
 ];
 
-// 美化选项初始档位（1 轻 / 2 中 / 3 强）
-const BEAUTY_DEFAULT = { whiten: 2, smooth: 2, hair: 2 };
-
 Page({
   data: {
     exam: null,
     bgOptions: [],
     bgIndex: 0,
 
-    beautyOptions: beauty.OPTION_DEFS.map((o) => ({
-      key: o.key,
-      name: o.name,
-      desc: o.desc,
-      levels: beauty.LEVEL_LABELS,
-      value: BEAUTY_DEFAULT[o.key],
-    })),
+    // 美颜开关（对标竞品：单开关无档位，默认关闭）
+    beautyOn: false,
 
     modelStateText: '准备中…',
     modelReady: false,
@@ -94,12 +86,8 @@ Page({
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
   },
 
-  onBeautyChange(e) {
-    const { key, level } = e.currentTarget.dataset;
-    const beautyOptions = this.data.beautyOptions.map((o) =>
-      o.key === key ? Object.assign({}, o, { value: Number(level) }) : o
-    );
-    this.setData({ beautyOptions });
+  onBeautyToggle(e) {
+    this.setData({ beautyOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -195,10 +183,6 @@ Page({
       return;
     }
     const bg = this.data.bgOptions[this.data.bgIndex] || specs.getBackground('white');
-    const beautyOpt = {};
-    this.data.beautyOptions.forEach((o) => {
-      beautyOpt[o.key] = o.value;
-    });
     this.setData({ busy: true, progressText: '' });
     this.resetSteps();
 
@@ -208,7 +192,7 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
-        beauty: beautyOpt,
+        beauty: this.data.beautyOn ? beauty.BEAUTY_ON : null,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

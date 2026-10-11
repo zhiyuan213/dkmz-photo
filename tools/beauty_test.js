@@ -29,14 +29,10 @@ function base() {
 }
 
 const VARIANTS = [
-  ['l1', { whiten: 1 }],
-  ['l2', { whiten: 2 }],
-  ['l3', { whiten: 3 }],
-  ['s1', { smooth: 1 }],
-  ['s2', { smooth: 2 }],
-  ['h2', { hair: 2 }],
-  ['all2', { whiten: 2, smooth: 2, hair: 2 }],
-  ['all3', { whiten: 3, smooth: 3, hair: 3 }],
+  ['on', beauty.BEAUTY_ON],           // 开关打开（= 线上效果：美白轻 + 磨皮中）
+  ['w1', { whiten: 1 }],              // 仅美白（竞品对标参数）
+  ['s1', { smooth: 1 }],              // 仅磨皮
+  ['h2', { hair: 2 }],                // 黑发（未纳入开关，单独验证用）
 ];
 
 console.log(`图像 ${w}x${h} = ${n} px\n`);
