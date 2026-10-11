@@ -26,6 +26,27 @@
     </view>
   </view>
 
+  <!-- 照相馆修图：三维度 × 三档 -->
+  <view class="card">
+    <view class="card-title">照相馆修图</view>
+    <view class="beauty-row" wx:for="{{beautyOptions}}" wx:key="key">
+      <view class="beauty-name">{{item.name}}</view>
+      <view class="beauty-levels">
+        <view
+          class="beauty-level {{item.value === lidx + 1 ? 'active' : ''}}"
+          wx:for="{{item.levels}}"
+          wx:for-item="lv"
+          wx:for-index="lidx"
+          wx:key="lidx"
+          bindtap="onBeautyChange"
+          data-key="{{item.key}}"
+          data-level="{{lidx + 1}}"
+        >{{lv}}</view>
+      </view>
+    </view>
+    <view class="hint">仅调整光线与肤质，不改变面部特征。</view>
+  </view>
+
   <!-- 引擎状态 -->
   <view class="card">
     <view class="kv">

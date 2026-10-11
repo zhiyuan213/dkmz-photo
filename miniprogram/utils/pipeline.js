@@ -13,6 +13,7 @@
 
 const matting = require('./matting');
 const face = require('./face');
+const beauty = require('./beauty');
 
 /** 人脸检测送检上限（最长边），兼顾速度与精度；坐标按比例映射回原图 */
 const FACE_DETECT_CAP = 1280;
@@ -175,6 +176,8 @@ function drawWatermark(ctx, w, h, text) {
  * @param {object} src 越界补底信息 { srcW, srcH, box }；box 只有顶部可能越出
  *        原图，越界区的 alpha 不信任 MODNet（对补底区域判断不稳），一律置 0
  *        （纯背景），合成时即为目标底色。
+ *        另含 face（原图坐标脸框，可为 null）与 beauty（美化档位，可为 null）：
+ *        美化在 alpha 合成前进行，alpha 同时用于限定作用区域。
  */
 function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bgHex, watermarkText, src) {
   return new Promise((resolve, reject) => {
@@ -190,6 +193,33 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
         extendAlphaOutOfSource(alpha, outW, outH, src);
       }
       cleanGhostAlpha(alpha, outW, outH);
+
+      // 照相馆修图（美白/磨皮/黑发），只处理人像像素（alpha 内），背景在后续合成被覆盖
+      if (src && src.beauty) {
+        const b = src.beauty;
+        let faceOut = null;
+        if (src.face && src.box) {
+          faceOut = {
+            left: ((src.face.left - src.box.left) / src.box.width) * outW,
+            top: ((src.face.top - src.box.top) / src.box.height) * outH,
+            width: (src.face.boxWidth / src.box.width) * outW,
+            height: (src.face.boxHeight / src.box.height) * outH,
+          };
+        }
+        try {
+          beauty.applyBeauty(person.data, outW, outH, {
+            alpha,
+            face: faceOut,
+            whiten: b.whiten,
+            smooth: b.smooth,
+            hair: b.hair,
+          });
+        } catch (e) {
+          // 美化失败不阻塞出片（保留原片）
+          console.warn('[photo][beauty] 美化失败，跳过', e);
+        }
+      }
+
       const bg = matting.hexToRgb(bgHex);
       const d = person.data;
       for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
@@ -389,7 +419,13 @@ function makeIdPhoto(opts) {
         outH,
         o.bgHex || '#FFFFFF',
         o.watermark === undefined ? '登科喵证件照 · 预览' : o.watermark,
-        { srcW: ctx0.fd.origW, srcH: ctx0.fd.origH, box: ctx0.box }
+        {
+          srcW: ctx0.fd.origW,
+          srcH: ctx0.fd.origH,
+          box: ctx0.box,
+          face: ctx0.fd.face,
+          beauty: o.beauty || null,
+        }
       ).then((canvas) => {
         metrics.push({ k: '换底合成', v: `${Date.now() - t2} ms` });
         return Object.assign(ctx0, { canvas });
