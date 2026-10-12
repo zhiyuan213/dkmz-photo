@@ -3,7 +3,6 @@ const { REVIEW_MODE } = require('../../utils/config.js');
 
 Page({
   data: {
-    keyword: '',
     exams: [],
     meta: specs.META,
     specSource: specs.sourceInfo().sourceText,
@@ -65,15 +64,6 @@ Page({
       bgNames: specs.examBackgrounds(e).map((b) => b.name).join(' / '),
       sizeSummary: specs.sizeSummary(e),
     }));
-  },
-
-  onSearchInput(e) {
-    const kw = e.detail.value;
-    this.setData({ keyword: kw, exams: this.decorate(specs.search(kw)) });
-  },
-
-  onClearSearch() {
-    this.setData({ keyword: '', exams: this.decorate(specs.allExams()) });
   },
 
   onPickExam(e) {

@@ -14,17 +14,6 @@
     <view class="hero-sub">选考试 → 自动裁剪 → 一键换底 → 按规格导出</view>
   </view>
 
-  <view class="search-wrap">
-    <input
-      class="search"
-      placeholder="搜索考试，如：考研 / 教资 / 四六级"
-      value="{{keyword}}"
-      bindinput="onSearchInput"
-      confirm-type="search"
-    />
-    <text class="search-clear" wx:if="{{keyword}}" bindtap="onClearSearch">✕</text>
-  </view>
-
   <view class="list">
     <view
       class="exam-card"
@@ -45,7 +34,7 @@
       <view class="arrow">›</view>
     </view>
 
-    <view class="empty" wx:if="{{!exams.length}}">没有匹配的考试，换个关键词试试</view>
+    <view class="empty" wx:if="{{!exams.length}}">规格库加载中，下拉可刷新</view>
   </view>
 
   <view class="footer">

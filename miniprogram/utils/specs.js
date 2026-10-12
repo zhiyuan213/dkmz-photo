@@ -260,17 +260,6 @@ function sizeSummary(exam) {
   return `${px} · ${size}`;
 }
 
-/** 简单关键词搜索：匹配名称/全称/分组/阶段/别名 */
-function search(keyword) {
-  const k = String(keyword || '').trim().toLowerCase();
-  if (!k) return EXAMS;
-  return EXAMS.filter((e) =>
-    [e.name, e.fullName, e.group, e.stage, (e.aliases || []).join(' ')].some((s) =>
-      s.toLowerCase().includes(k)
-    )
-  );
-}
-
 // ============================================================
 // 云端规格库（阶段 2）
 //
@@ -457,7 +446,6 @@ module.exports = {
   getBackground,
   examBackgrounds,
   sizeSummary,
-  search,
   refresh,
   loadCache,
   sourceInfo,
