@@ -6,7 +6,7 @@
 
   <view class="doc-h">一、我们如何处理你的信息</view>
   <view class="doc-p">为完成「选照片 → 自动裁剪构图 → 一键换底色 → 导出证件照」的全过程，本产品仅处理以下必要信息：</view>
-  <view class="doc-li">1. <text class="doc-strong">你主动选择或拍摄的照片</text>：用于制作证件照。<text class="doc-strong">默认模式下照片全程仅在你的手机本地处理，不会上传、不会存储到我们的服务器。</text>仅当你主动开启「云端精修」时，裁剪后的照片才会加密上传至腾讯云人像分割服务，仅用于生成分割结果，我们不存储你的照片（详见第四条）。</view>
+  <view class="doc-li">1. <text class="doc-strong">你主动选择或拍摄的照片</text>：用于制作证件照。制作时，<text class="doc-strong">裁剪后的照片会加密上传至腾讯云「人体分析 · 人像分割」服务，仅用于生成人像分割结果</text>；分割结果回传后在你的手机本地完成换底色与导出，<text class="doc-strong">我们不存储你的照片</text>（详见第四条）。</view>
   <view class="doc-li">2. <text class="doc-strong">摄像头</text>：当你使用「拍照」功能拍摄证件照时访问。</view>
   <view class="doc-li">3. <text class="doc-strong">相册（读取）</text>：仅读取你在选择照片时主动挑选的那一张。</view>
   <view class="doc-li">4. <text class="doc-strong">相册（写入）</text>：当你点击「保存到相册」时，将制作完成的照片写入你的手机相册。</view>
@@ -15,11 +15,11 @@
   <view class="doc-p">本产品不收集你的姓名、手机号、位置、通讯录、微信运动、麦克风等信息，也不读取你的剪贴板。</view>
 
   <view class="doc-h">三、信息的存储与对外提供</view>
-  <view class="doc-p">照片默认不上传。仅当你开启「云端精修」时，裁剪图会上传至腾讯云做人像分割处理，腾讯云仅返回处理结果；除此之外我们不存储你的照片，也不会向任何第三方共享、转让或公开披露你的信息。</view>
+  <view class="doc-p">制作时，裁剪图会上传至腾讯云做人像分割处理，腾讯云仅返回处理结果；除此之外我们不存储你的照片，也不会向任何第三方共享、转让或公开披露你的信息。</view>
 
   <view class="doc-h">四、第三方与开源组件</view>
   <view class="doc-p">端上人像分割使用开源模型 MODNet（Apache-2.0 许可，HuggingFace Xenova/modnet 的 ONNX 导出）。模型文件在首次使用时从公共 CDN 下载并缓存在你的手机本地，<text class="doc-strong">推理完全在本地完成</text>。完整声明见「关于与开源声明」。</view>
-  <view class="doc-p">「云端精修」为可选功能（默认关闭）：开启后由腾讯云「人体分析 · 人像分割」服务处理你当次制作的裁剪图，用于获得更精细的人像边缘；若你同时开启「肤色提亮」，服务还会在面部皮肤区域内做保守的亮度微调与磨皮，不改变面部特征。该服务仅返回处理结果，我们不存储、不接受任何用于训练的照片数据。</view>
+  <view class="doc-p">「AI 精修」为可选开关（<text class="doc-strong">默认关闭，此时功能为「替换背景」</text>）：两种模式都会调用腾讯云「人体分析 · 人像分割」服务处理你当次制作的裁剪图，用于获得更精细的人像边缘；<text class="doc-strong">开启「AI 精修」后功能为「替换背景 + 美颜」</text>，服务还会在面部皮肤区域内做保守的亮度微调与磨皮，不改变面部特征。该服务仅返回处理结果，我们不存储、不接受任何用于训练的照片数据。</view>
 
   <view class="doc-h">五、你的权利</view>
   <view class="doc-p">你可随时通过「微信 → 打开本小程序 → 右上角「…」→ 设置」撤回摄像头或相册授权，也可清除小程序缓存。撤回后相关功能将不可用，但不影响其他功能。</view>

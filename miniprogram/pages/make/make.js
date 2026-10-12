@@ -18,10 +18,11 @@ Page({
     bgOptions: [],
     bgIndex: 0,
 
-    // 云端精修（腾讯云 BDA 人像分割）：默认关闭，失败自动回退端上抠图
-    cloudOn: false,
-    // 肤色提亮（仅在云端精修开启时可选，后端做保守提亮+磨皮）
-    beautyOn: false,
+    // AI 精修：默认关闭 = 只替换背景；打开 = 替换背景 + 美颜
+    // （默认就走云端 BDA 抠图，只是关闭时云端只回 alpha 灰度图、端上换底；
+    //   云端不可用时对两种模式都自动回退端上 MODNet）
+    aiOn: false,
+    cloudAvailable: false,
 
     modelStateText: '准备中…',
     modelReady: false,
@@ -53,6 +54,7 @@ Page({
       bgOptions,
       bgIndex: 0,
       camFrameStyle,
+      cloudAvailable: api.isCloudEnabled(),
       steps: STEPS.map((s) => ({ key: s.key, label: s.label, state: 'pending' })),
     });
     this.prepareModel();
@@ -88,13 +90,8 @@ Page({
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
   },
 
-  onCloudToggle(e) {
-    this.setData({ cloudOn: !!e.detail.value });
-    if (!e.detail.value) this.setData({ beautyOn: false });
-  },
-
-  onBeautyToggle(e) {
-    this.setData({ beautyOn: !!e.detail.value });
+  onAiToggle(e) {
+    this.setData({ aiOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -181,8 +178,8 @@ Page({
   },
 
   resetSteps() {
-    const mattingLabel = this.data.cloudOn && api.isCloudEnabled()
-      ? (this.data.beautyOn ? '云端抠图 · 精修' : '云端抠图 · 换底')
+    const mattingLabel = this.data.cloudAvailable
+      ? (this.data.aiOn ? '云端抠图 · 换底美颜' : '云端抠图 · 换底')
       : '端上抠图';
     this.setData({
       steps: STEPS.map((s) => ({
@@ -194,14 +191,22 @@ Page({
   },
 
   run(imgPath) {
-    const useCloud = this.data.cloudOn && api.isCloudEnabled();
-    if (!this.session && !useCloud) {
+    // 抠图一律云端优先（AI 精修开关只决定是否附带美颜）：
+    //   关闭 → 云端只回 alpha 灰度图，端上用本地原图换底（替换背景）
+    //   打开 → 云端直接回成品图（替换背景 + 美颜）
+    // 云端不可用时，两种模式都静默回退端上 MODNet（此时美颜无法提供）
+    const useCloud = this.data.cloudAvailable;
+    if (!useCloud && !this.session) {
       wx.showToast({ title: '模型未就绪', icon: 'none' });
       return;
     }
-    if (this.data.cloudOn && !api.isCloudEnabled()) {
-      wx.showToast({ title: '未连接云端，使用本地抠图', icon: 'none' });
+    if (!useCloud) {
+      wx.showToast({
+        title: this.data.aiOn ? '未连接云端，仅替换背景' : '未连接云端，使用本地抠图',
+        icon: 'none',
+      });
     }
+    const aiOn = this.data.aiOn;
     const bg = this.data.bgOptions[this.data.bgIndex] || specs.getBackground('white');
     this.setData({ busy: true, progressText: '' });
     this.resetSteps();
@@ -212,11 +217,9 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
-        cloudSegment: useCloud
-          ? (b64, extra) => api.cloudSegment(b64, this.data.beautyOn, extra)
-          : null,
-        // 只替换背景（肤色提亮关闭）⇒ 云端只回 alpha，端上用本地图换底
-        alphaOnly: !this.data.beautyOn,
+        cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, aiOn, extra) : null,
+        // 只替换背景（AI 精修关闭）⇒ 云端只回 alpha，端上用本地图换底
+        alphaOnly: !aiOn,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');
