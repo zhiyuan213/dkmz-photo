@@ -107,7 +107,8 @@ function fallbackCropBox(imgWidth, imgHeight, ratio, faceHeightRatio) {
  * 横向/底部不越界（calcCropBox 已保证）——横向造像素（边缘列拉伸）
  * 会产出与人身断开的悬空色块，已废弃。
  */
-function cropAndScale(imgPath, box, outW, outH) {
+function cropAndScale(imgPath, box, outW, outH, quality) {
+  const q = quality === undefined ? CROP_QUALITY : quality;
   return new Promise((resolve, reject) => {
     const canvas = wx.createOffscreenCanvas({ type: '2d', width: outW, height: outH });
     const ctx = canvas.getContext('2d');
@@ -140,7 +141,7 @@ function cropAndScale(imgPath, box, outW, outH) {
         destWidth: outW,
         destHeight: outH,
         fileType: 'jpg',
-        quality: CROP_QUALITY,
+        quality: q,
         success: (r) => resolve(r.tempFilePath),
         fail: (e) => reject(new Error('裁剪导出失败：' + JSON.stringify(e))),
       });
@@ -441,12 +442,28 @@ function maskFromPng(pngPath) {
 }
 
 /**
- * 云端精修抠图：裁剪图 → base64 上传 → BDA 分割 → 提取 alpha 蒙版。
+ * 云端精修抠图：单独产一张「上传小图」（长边 512、质量 0.8），
+ * 保证 base64 < 100KB —— callContainer 请求包硬限制 100KB（-606001），
+ * 微信二次压缩过的相册图噪点多，480×640@0.95 的原图裁剪会超限。
+ * 蒙版后续会 resizeMask 缩放回输出尺寸，上传图小一点不影响分割精度。
  * cloudSegment(base64) 需 resolve { ok:true, image:<png base64> }，reject / ok:false 一律视为失败。
  */
-function cloudMatting(croppedPath, cloudSegment) {
-  return fileToBase64(croppedPath)
-    .then((b64) => cloudSegment(b64))
+const CLOUD_UPLOAD_LONG_EDGE = 512;
+const CLOUD_UPLOAD_QUALITY = 0.8;
+const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
+
+function cloudMatting(imgPath, box, outW, outH, cloudSegment) {
+  const s = CLOUD_UPLOAD_LONG_EDGE / Math.max(outW, outH);
+  const w = Math.max(1, Math.round(outW * s));
+  const h = Math.max(1, Math.round(outH * s));
+  return cropAndScale(imgPath, box, w, h, CLOUD_UPLOAD_QUALITY)
+    .then((uploadPath) => fileToBase64(uploadPath))
+    .then((b64) => {
+      if (b64.length > CLOUD_PAYLOAD_LIMIT) {
+        throw new Error(`上传图过大(${Math.round(b64.length / 1024)}KB)`);
+      }
+      return cloudSegment(b64);
+    })
     .then((res) => {
       if (!res || !res.ok || !res.image) {
         throw new Error((res && res.msg) || '云端精修不可用');
@@ -539,7 +556,7 @@ function makeIdPhoto(opts) {
         return local();
       }
       // 云端优先，任何失败（未开通/网络/服务错误）静默回退端上，出片不中断
-      return cloudMatting(croppedPath, o.cloudSegment)
+      return cloudMatting(o.imgPath, box, outW, outH, o.cloudSegment)
         .then((r) => finish(r, 'cloud'))
         .catch((e) => {
           // api 层 reject 的是 {code,msg} 对象而非 Error，msg/message 都兜住
