@@ -542,8 +542,10 @@ function makeIdPhoto(opts) {
       return cloudMatting(croppedPath, o.cloudSegment)
         .then((r) => finish(r, 'cloud'))
         .catch((e) => {
+          const why = (e && e.message ? String(e.message) : '').replace(/\s+/g, ' ').trim().slice(0, 50);
           console.warn('[photo][pipeline] 云端精修失败，回退端上抠图：', e && e.message);
-          metrics.push({ k: '云端抠图', v: '失败，已回退端上' });
+          // 失败原因透出到结果页「处理明细」，便于用户/排查直接看到 BDA 报错
+          metrics.push({ k: '云端抠图', v: `失败，已回退端上${why ? `（${why}）` : ''}` });
           return local();
         });
     })
