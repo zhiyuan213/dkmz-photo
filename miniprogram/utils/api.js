@@ -176,25 +176,15 @@ function consumeExport(clientNo, specId, specOk) {
 // ============================================================
 
 /**
- * 云端精修：上传裁剪图 base64，返回成品图 base64。
- * 带 bgHex 时后端走「成品图模式」：连换底、边缘去污染一起做完，返回不透明 JPEG
- * （响应里的 finished=true），端上直接拿它加水印/导出 —— 云端美白的像素这才进得了成片。
- * 不带则返回透明底 PNG（老版本后端兼容）。
- *
- * @param {string} imageBase64 裁剪图 base64（与输出同尺寸）
+ * 云端人像分割：上传裁剪图 base64，返回透明底 PNG base64。
+ * @param {string} imageBase64 裁剪图 base64
  * @param {boolean} beautify 是否同时做保守美肤（肤色提亮+磨皮，作用区域=面部皮肤 mask）；
  *                           需后端 BDAB_BEAUTY_ENABLED=true，否则后端忽略并只抠图
- * @param {object} extra {bgHex, outTop}：目标底色 / 裁剪框越出原图的顶部行数
  * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
  */
-function cloudSegment(imageBase64, beautify = false, extra = null) {
-  const body = { image: imageBase64, beauty: !!beautify };
-  if (extra && extra.bgHex) {
-    body.bgHex = extra.bgHex;
-    body.outTop = extra.outTop || 0;
-  }
-  // 抠图(+美肤需要两次 BDA 调用，再加换底合成)+大图上传比普通接口慢，放宽到 25s
-  return call('/api/photo/segment', 'POST', body, 25000);
+function cloudSegment(imageBase64, beautify = false) {
+  // 抠图(+美肤需要两次 BDA 调用)+大图上传比普通接口慢，放宽到 25s
+  return call('/api/photo/segment', 'POST', { image: imageBase64, beauty: !!beautify }, 25000);
 }
 
 // ============================================================
