@@ -26,16 +26,10 @@
     </view>
   </view>
 
-  <!-- AI 精修：默认关闭 = 只替换背景；打开 = 替换背景 + 美颜 -->
+  <!-- AI 精修：默认启用（替换背景 + 美颜），不再提供开关 -->
   <view class="card">
-    <view class="cloud-switch-row">
-      <view class="cloud-switch-info">
-        <view class="card-title">AI 精修</view>
-        <view class="hint">{{aiOn ? '替换背景 + 美颜' : '替换背景'}}</view>
-      </view>
-      <switch checked="{{aiOn}}" bindchange="onAiToggle" color="#0D60F8" />
-    </view>
-    <view class="hint cloud-note">{{aiOn ? '腾讯云人像分割 + 保守肤色提亮（不改变面部特征，仅作用于面部皮肤）' : '腾讯云人像分割更精细，发丝边缘更干净'}}</view>
+    <view class="card-title">AI 精修</view>
+    <view class="hint">替换背景 + 美颜（已默认启用）：腾讯云人像分割，并在面部皮肤区域做保守的肤色提亮与磨皮，不改变面部特征</view>
   </view>
 
   <!-- 引擎状态（云端可用时仅作兜底：抠图失败自动回退端上） -->
@@ -60,9 +54,8 @@
       </view>
     </view>
 
-    <view class="hint" wx:if="{{!cloudAvailable}}">照片仅在手机本地处理，不会上传。</view>
-    <view class="hint" wx:elif="{{aiOn}}">照片将上传腾讯云做人像分割与美颜，仅用于生成结果。</view>
-    <view class="hint" wx:else>照片将上传腾讯云做人像分割，仅用于生成结果。</view>
+    <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：本次仅在手机本地处理、不上传照片（本地链路不含美颜）。</view>
+    <view class="hint" wx:else>照片将上传腾讯云做人像分割、面部提亮，并按所选底色合成后回传，仅用于生成结果。</view>
     <view class="hint">建议半身照（胸像以上、离镜头 0.5~1 米）：人脸太近会导致裁剪过满、头顶留白不足。</view>
   </view>
 

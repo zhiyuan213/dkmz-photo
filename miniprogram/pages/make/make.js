@@ -18,10 +18,10 @@ Page({
     bgOptions: [],
     bgIndex: 0,
 
-    // AI 精修：默认关闭 = 只替换背景；打开 = 替换背景 + 美颜
-    // （默认就走云端 BDA 抠图，只是关闭时云端只回 alpha 灰度图、端上换底；
-    //   云端不可用时对两种模式都自动回退端上 MODNet）
-    aiOn: false,
+    // AI 精修已默认启用（不再提供开关）：替换背景 + 美颜。
+    // 抠图一律走云端 BDA；云端不可用时自动回退端上 MODNet（此时不含美颜）。
+    // 如需恢复「只替换背景」，把 run() 里的 beautify 传 false 并加 alphaOnly: true
+    //（后端 alphaOnly 出口仍在：只回 alpha 灰度图、端上换底，响应约 13KB）。
     cloudAvailable: false,
 
     modelStateText: '准备中…',
@@ -88,10 +88,6 @@ Page({
 
   onBgChange(e) {
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
-  },
-
-  onAiToggle(e) {
-    this.setData({ aiOn: !!e.detail.value });
   },
 
   onPickPhoto() {
@@ -178,9 +174,7 @@ Page({
   },
 
   resetSteps() {
-    const mattingLabel = this.data.cloudAvailable
-      ? (this.data.aiOn ? '云端抠图 · 换底美颜' : '云端抠图 · 换底')
-      : '端上抠图';
+    const mattingLabel = this.data.cloudAvailable ? '云端抠图 · 换底美颜' : '端上抠图';
     this.setData({
       steps: STEPS.map((s) => ({
         key: s.key,
@@ -191,22 +185,18 @@ Page({
   },
 
   run(imgPath) {
-    // 抠图一律云端优先（AI 精修开关只决定是否附带美颜）：
-    //   关闭 → 云端只回 alpha 灰度图，端上用本地原图换底（替换背景）
-    //   打开 → 云端直接回成品图（替换背景 + 美颜）
-    // 云端不可用时，两种模式都静默回退端上 MODNet（此时美颜无法提供）
+    // 抠图一律云端优先，且固定带美颜（AI 精修已默认启用、不可关闭）：
+    //   云端可用 → 上传裁剪图，云端一次完成「人像分割 + 面部提亮 + 换底合成」，
+    //             回不透明成品图（约 60~90KB），端上只加水印/导出
+    //   云端不可用 → 静默回退端上 MODNet（本地处理、不上传，此时不含美颜）
     const useCloud = this.data.cloudAvailable;
     if (!useCloud && !this.session) {
       wx.showToast({ title: '模型未就绪', icon: 'none' });
       return;
     }
     if (!useCloud) {
-      wx.showToast({
-        title: this.data.aiOn ? '未连接云端，仅替换背景' : '未连接云端，使用本地抠图',
-        icon: 'none',
-      });
+      wx.showToast({ title: '未连接云端，使用本地抠图（不含美颜）', icon: 'none' });
     }
-    const aiOn = this.data.aiOn;
     const bg = this.data.bgOptions[this.data.bgIndex] || specs.getBackground('white');
     this.setData({ busy: true, progressText: '' });
     this.resetSteps();
@@ -217,9 +207,8 @@ Page({
         exam: this.data.exam,
         bgHex: bg.hex,
         session: this.session,
-        cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, aiOn, extra) : null,
-        // 只替换背景（AI 精修关闭）⇒ 云端只回 alpha，端上用本地图换底
-        alphaOnly: !aiOn,
+        cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, true, extra) : null,
+        // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

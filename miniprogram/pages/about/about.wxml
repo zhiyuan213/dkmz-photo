@@ -7,7 +7,7 @@
     </view>
   </view>
 
-  <view class="doc-p">帮你 3 分钟做出符合报名要求的证件照：选考试 → 自动裁剪构图 → 一键换底色 → 按规格导出。制作时照片会加密上传腾讯云「人像分割」服务用于识别人像边缘，结果回传后在手机本地完成换底与导出，<text class="doc-strong">我们不存储你的照片</text>。</view>
+  <view class="doc-p">帮你 3 分钟做出符合报名要求的证件照：选考试 → 自动裁剪构图 → 一键换底色 → 按规格导出。制作时照片会加密上传腾讯云，用于人像分割、面部保守提亮与按所选底色合成，结果回传后在你的手机本地加水印并导出，<text class="doc-strong">我们不存储你的照片</text>。</view>
 
   <view class="doc-h">规格库</view>
   <view class="doc-p">{{specSource}}版本 v{{meta.version}}，更新于 {{meta.updatedAt}}，数据来源为各考试主管部门、报考点或院校发布的公开公告。</view>
