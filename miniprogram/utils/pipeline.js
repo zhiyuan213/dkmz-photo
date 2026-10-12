@@ -18,6 +18,10 @@
  *  - 成品图（res.finished=true）：云端已把「美白后的像素 + 换底 + 边缘净化」一次做完，
  *    端上只负责加水印、按规格体积导出 —— 美的像素这才真正进得了成片
  *  - 透明底 PNG（老后端）：端上按 alpha 自行换底合成（保留的历史链路）
+ *    这条链路的端上处理顺序（换深色底时全开，白底自动全部跳过）：
+ *      cleanGhostAlpha → computeWallMask(原始数据) → decontaminateEdge → processHair
+ *    computeWallMask 必须在 decontaminateEdge 之前算，因为去污染会改写 alpha/RGB、
+ *    污染泛洪种子；processHair 用它的结果治深色底上的发丝白霜。
  *
  * 隐私：端上通道原图全程不出手机；云端精修开启时裁剪图会上传至腾讯云做分割。
  */
@@ -213,7 +217,19 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
       // 再把过淡的 alpha 光环直接收掉。残影重估只在目标底比原背景暗时启用
       //（白底→白底跳过：头发/亮肤本就像「白墙混合色」，重估会误伤成银灰）。
       const bg = matting.hexToRgb(bgHex);
+
+      // 头发白霜修复的作用区（墙体泄漏区）必须在去污染**之前**、用原始数据计算：
+      // 去污染会改写 alpha 与 RGB，残留的低 alpha 点会污染泛洪种子。
+      // 白底场景整个跳过（与上面残影重估同一门控）——一来墙体泄漏区是整图 BFS，
+      // 白底没必要跑；二来白底上「灰白」与「半透明深色」观感一致，处理只会误伤。
+      const wall = targetIsDark(alpha, person.data, alpha.length, bg)
+        ? computeWallMask(alpha, person.data, outW, outH)
+        : null;
+
       decontaminateEdge(alpha, person.data, outW, outH, bg);
+
+      // 头发白霜修复（深色底专用）：见 processHair 注释
+      if (wall) processHair(alpha, person.data, outW, outH, wall);
 
       const d = person.data;
       for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
@@ -369,6 +385,187 @@ function decontaminateEdge(alpha, d, outW, outH, targetBg) {
       alpha[i] = 1 - w;
     }
   }
+}
+
+/**
+ * 目标底色是否「明显比原背景暗」——即需要边缘净化/头发修复的深色底。
+ *
+ * 判据与 decontaminateEdge 内部的残影重估门控一致：原背景亮度 − 目标底亮度 ≥ 40。
+ * 之所以单独算一次（而不是复用 decontaminateEdge 的结果），是因为头发修复必须
+ * 在去污染**之前**决定要不要算墙体泄漏区（那是整图 BFS，白底场景没必要跑）。
+ *
+ * @param {Float32Array} alpha 抠图 alpha（此时仍是原始值）
+ * @param {Uint8ClampedArray} d RGBA 像素
+ * @param {number} n 像素数
+ * @param {number[]} targetBg 目标底色 [r,g,b]
+ */
+function targetIsDark(alpha, d, n, targetBg) {
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  let cnt = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    if (alpha[i] < 0.03) {
+      sr += d[p];
+      sg += d[p + 1];
+      sb += d[p + 2];
+      cnt++;
+    }
+  }
+  // 样本太少说明 alpha 全糊了，按「不改」处理（宁可不修，不要误修）
+  if (cnt <= n * 0.005) return false;
+  const origLuma = (sr + sg + sb) / cnt / 3;
+  const targetLuma = (targetBg[0] + targetBg[1] + targetBg[2]) / 3;
+  return origLuma - targetLuma >= 40;
+}
+
+/**
+ * 墙体泄漏区（供头发修复做作用区；移植自 tools/local_render.py v3 定稿）
+ * 从真背景种子（原始 alpha<0.05）沿「中性灰白+亮」像素 BFS 生长，限上半区。
+ * r-b ≤ 22 是皮肤防线：黄种人皮肤 r 明显大于 b，白墙是中性色——泛洪进不了脸。
+ * 调用时机：必须在 decontaminateEdge 之前、用原始数据计算。
+ * @returns {Uint8Array} 1=墙体泄漏区
+ */
+function computeWallMask(alpha, d, outW, outH) {
+  const n = outW * outH;
+  const top = Math.floor(outH * 0.62);
+  const SAT_MAX = 40;
+  const LUM_MIN = 130;
+  const RB_MAX = 22;
+
+  const visited = new Uint8Array(n);
+  const queue = new Int32Array(n);
+  let qh = 0;
+  let qt = 0;
+  for (let i = 0; i < n; i++) {
+    if (alpha[i] < 0.05) {
+      visited[i] = 1;
+      queue[qt++] = i;
+    }
+  }
+  while (qh < qt) {
+    const i = queue[qh++];
+    const x = i % outW;
+    const y = (i - x) / outW;
+    let j;
+    if (x + 1 < outW) {
+      j = i + 1;
+      if (!visited[j] && isWallish(j)) { visited[j] = 1; queue[qt++] = j; }
+    }
+    if (x > 0) {
+      j = i - 1;
+      if (!visited[j] && isWallish(j)) { visited[j] = 1; queue[qt++] = j; }
+    }
+    if (y + 1 < top) {
+      j = i + outW;
+      if (!visited[j] && isWallish(j)) { visited[j] = 1; queue[qt++] = j; }
+    }
+    if (y > 0) {
+      j = i - outW;
+      if (!visited[j] && isWallish(j)) { visited[j] = 1; queue[qt++] = j; }
+    }
+  }
+  // 返回 visited ∩ wallish（对齐 Python 版 visited & wallish）
+  const wall = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    if (visited[i] && isWallish(i)) wall[i] = 1;
+  }
+  return wall;
+
+  function isWallish(i) {
+    const p = i * 4;
+    const r = d[p];
+    const g = d[p + 1];
+    const b = d[p + 2];
+    const sat = Math.max(r, g, b) - Math.min(r, g, b);
+    const lum = (r + g + b) / 3;
+    return sat <= SAT_MAX && lum >= LUM_MIN && r - b <= RB_MAX;
+  }
+}
+
+/**
+ * 头发白霜修复（连续键控版，原位修改；移植自 tools/local_render.py v3 定稿）
+ * BDA/MODNet 对细发丝给不出实心 alpha（0.2~0.7 软过渡），发丝像素是
+ * 「发色 + 白墙」的混合色，深底上反推残留白墙亮色 → 头顶灰白霜。
+ * 用 computeWallMask 的墙体连通区限定作用范围：
+ *  1) 泛洪区内接近纯墙的像素（lum≥235）直接 alpha=0（发冠内部灰色小孔清干净）
+ *  2) 作用区 = wall 膨胀 5px ∩ 上半区 ∩ 中性色（rb≤25, sat≤55）
+ *     —— 脸/镜框够不到泛洪区，天然免疫
+ *  3) 区内连续键控：t=墙占比（lum 200→0, 245→1），alpha×(1−t)；
+ *     亮度向发丝暗部 HD 压缩（keep=0.5×alpha，越透明压得越狠）
+ * @returns {number} HD 发丝暗部中位亮度（调试用）
+ */
+function processHair(alpha, d, outW, outH, wall) {
+  const n = outW * outH;
+  const top = Math.floor(outH * 0.62);
+
+  // 预计算亮度/饱和度/r-b（rgb 全程不变，共用一份）
+  const lum = new Float32Array(n);
+  const sat = new Float32Array(n);
+  const rb = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = d[p];
+    const g = d[p + 1];
+    const b = d[p + 2];
+    lum[i] = (r + g + b) / 3;
+    sat[i] = Math.max(r, g, b) - Math.min(r, g, b);
+    rb[i] = r - b;
+  }
+
+  // 1) 泛洪区内接近纯墙 → alpha=0
+  for (let i = 0; i < n; i++) {
+    if (wall[i] && lum[i] >= 235) alpha[i] = 0;
+  }
+
+  // 2) 作用区 = wall 的 5x5 膨胀 ∩ 上半区 ∩ 中性色 ∩ alpha>0
+  const zone = new Uint8Array(n);
+  for (let y = 0; y < top; y++) {
+    for (let x = 0; x < outW; x++) {
+      const i = y * outW + x;
+      if (alpha[i] <= 0) continue;
+      let near = 0;
+      for (let dy = -2; dy <= 2 && !near; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= outH) continue;
+        const row = yy * outW;
+        for (let dx = -2; dx <= 2; dx++) {
+          const xx = x + dx;
+          if (xx >= 0 && xx < outW && wall[row + xx]) {
+            near = 1;
+            break;
+          }
+        }
+      }
+      if (near && rb[i] <= 25 && sat[i] <= 55) zone[i] = 1;
+    }
+  }
+
+  // 发丝暗部中位数 HD（上半区、非墙、较实心且较暗的像素）
+  const vals = [];
+  for (let y = 0; y < top; y++) {
+    for (let x = 0; x < outW; x++) {
+      const i = y * outW + x;
+      if (!wall[i] && alpha[i] > 0.5 && lum[i] < 100) vals.push(lum[i]);
+    }
+  }
+  vals.sort((a, b) => a - b);
+  const HD = vals.length ? vals[Math.floor(vals.length / 2)] : 60;
+
+  // 3) 连续键控 + 高光压暗
+  for (let i = 0; i < n; i++) {
+    if (!zone[i]) continue;
+    const t = Math.min(1, Math.max(0, (lum[i] - 200) / 45));
+    alpha[i] *= 1 - t;
+    const keep = 0.5 * alpha[i];
+    const f = (HD + (lum[i] - HD) * keep) / Math.max(lum[i], 1);
+    if (lum[i] >= HD + 20) {
+      const p = i * 4;
+      d[p] = clamp(d[p] * f);
+      d[p + 1] = clamp(d[p + 1] * f);
+      d[p + 2] = clamp(d[p + 2] * f);
+    }
+  }
+  return HD;
 }
 
 /**

@@ -87,8 +87,12 @@ photo:
     endpoint: ${BDAB_ENDPOINT:}
     # 美肤开关（肤色提亮+磨皮，作用区域=自定义分割的 Face mask）。
     # 每次美肤+抠图消耗 2 次 BDA 调用（共享每月 1000 次免费额度），独立控制成本。
-    # 算法为保守办证档：YCbCr 只提亮 Y 通道、单像素封顶 12/255、绝不变脸型。
+    # 算法为 v9 定稿版（IdPhotoBeautyService，两条链路共用同一份实现）：
+    # YCbCr 只提亮 Y 通道、自适应中位数锚点、单像素封顶 12/255、
+    # 连续羽化权重（消除磨皮边界硬线）、绝不变脸型。
     beauty-enabled: ${BDAB_BEAUTY_ENABLED:false}
+    # 美肤档位：id（办证档，最保守）/ normal（均衡档，默认）/ portrait（形象档，可见变化）
+    beauty-level: ${BDAB_BEAUTY_LEVEL:normal}
 
 # SDK 日志收敛：DEBUG 级可能把请求体（含图片 base64）打进日志，人脸数据严禁落日志
 logging:
