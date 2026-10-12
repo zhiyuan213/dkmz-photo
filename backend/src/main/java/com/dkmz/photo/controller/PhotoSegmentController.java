@@ -6,6 +6,8 @@ import com.dkmz.photo.service.PortraitCompositeService;
 import com.dkmz.photo.service.SkinBeautyService;
 import com.dkmz.photo.support.AlphaExtractor;
 import com.dkmz.photo.support.BackgroundColorEstimator;
+import com.dkmz.photo.support.OpenidSupport;
+import com.dkmz.photo.support.SegmentRateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -80,6 +82,7 @@ public class PhotoSegmentController {
     private final CustomSegmentService customSegmentService;
     private final SkinBeautyService skinBeautyService;
     private final PortraitCompositeService compositeService;
+    private final SegmentRateLimiter rateLimiter;
 
     /** 美肤总开关（每次美肤多消耗 1 次 BDA 调用，独立控制成本） */
     @Value("${photo.bda.beauty-enabled:false}")
@@ -88,17 +91,41 @@ public class PhotoSegmentController {
     public PhotoSegmentController(BdaSegmentService segmentService,
                                   CustomSegmentService customSegmentService,
                                   SkinBeautyService skinBeautyService,
-                                  PortraitCompositeService compositeService) {
+                                  PortraitCompositeService compositeService,
+                                  SegmentRateLimiter rateLimiter) {
         this.segmentService = segmentService;
         this.customSegmentService = customSegmentService;
         this.skinBeautyService = skinBeautyService;
         this.compositeService = compositeService;
+        this.rateLimiter = rateLimiter;
     }
 
     @PostMapping("/segment")
     public Map<String, Object> segment(@RequestBody(required = false) Map<String, Object> body,
+                                       @RequestHeader(value = "X-WX-FROM-OPENID", required = false) String fromOpenid,
                                        @RequestHeader(value = "X-WX-OPENID", required = false) String openid) {
         Map<String, Object> out = new LinkedHashMap<>();
+        // ---- 防刷第一道：必须带微信侧注入的用户身份 ----
+        // 云托管只对「小程序 callContainer / 微信内网通道」的请求注入 X-WX-OPENID 等头；
+        // 公网域名直连（curl / 脚本）拿不到 ⇒ 直接拒绝，公网爬虫连图片都不用处理就被挡掉。
+        // （攻击者仍可伪造该头，但伪造身份会被单用户限流 + 全局限流兜底，损失有上界；
+        //   彻底解法是在云托管控制台关闭「公网访问」，小程序走内网通道不受影响。）
+        String user = OpenidSupport.resolve(fromOpenid, openid, null);
+        if (user == null || user.isBlank()) {
+            out.put("ok", false);
+            out.put("code", "NO_OPENID");
+            out.put("msg", "仅支持小程序内调用");
+            return out;
+        }
+        // ---- 防刷第二道：滑动窗口限流（全局 + 单用户；阈值见 application.yml）----
+        String denied = rateLimiter.tryAcquire(user);
+        if (denied != null) {
+            log.warn("segment 限流 user={}", userTag(user));
+            out.put("ok", false);
+            out.put("code", "RATE_LIMITED");
+            out.put("msg", denied);
+            return out;
+        }
         if (!segmentService.isEnabled()) {
             out.put("ok", false);
             out.put("code", "BDA_DISABLED");

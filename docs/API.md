@@ -175,6 +175,15 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 - 未开通 `{ ok:false, code:"BDA_DISABLED", msg }`
 - 失败 `{ ok:false, code:"BAD_REQUEST"|"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
 
+防刷（2026-10-13 起）：
+- **必须携带微信侧注入的用户身份**（`X-WX-OPENID` / `X-WX-FROM-OPENID`，云托管
+  只对小程序 callContainer 通道注入）：公网直连拿不到 ⇒ `{ok:false, code:"NO_OPENID"}`
+- **滑动窗口限流**（内存实现，阈值见 application.yml `photo.segment.rate.*`）：
+  单用户 6 次/分钟、60 次/天；全局 30 次/分钟、900 次/天；超限
+  `{ok:false, code:"RATE_LIMITED", msg}`，前端自动回退端上抠图
+- 局限：公网直连可伪造身份头绕开单用户档（全局档仍兜底）；
+  **彻底防刷 = 云托管控制台关闭「公网访问」**（callContainer 走内网不受影响）
+
 可靠性：偶发 `ServerError/RequestTimeout/UnKnowError` 自动重试 1 次；
 SDK 错误码已翻译成中文（分辨率超限/无人脸/欠费等可直接 toast）。
 日志严禁打印图片 base64（SDK 日志级别已收敛到 WARN）。
