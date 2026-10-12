@@ -4,9 +4,10 @@
   align-items: center;
 }
 
+/* 预览：宽度固定、高度随图片比例自适应（widthFix）。
+   不能写死 height+aspectFit：不同规格比例不同（0.688/0.75…），留空处会露出背景色，看起来像照片带了边框 */
 .preview {
   width: 420rpx;
-  height: 588rpx;
   background: #edf3fc;
   border-radius: 16rpx;
 }
