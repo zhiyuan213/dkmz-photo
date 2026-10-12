@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 规格库服务。
@@ -27,7 +28,9 @@ import java.util.Map;
  *   ① 规格库是核心资产且**必须能紧急修正**（某考试改了尺寸要求 → 用户按旧规格做照会被驳回），
  *      所以放数据库、由后台接口改，前端启动时拉取，而不是写死在包里；
  *   ② 前端仍然保留**内置兜底**：拉取失败（离线/接口异常/首启）时用随包版本，功能不中断；
- *   ③ 种子只在**空表**时导入一次，之后以数据库为准 —— 避免每次启动覆盖运营改过的数据。
+ *   ③ 种子只在**空表**时导入一次，之后以数据库为准 —— 避免每次启动覆盖运营改过的数据；
+ *   ④ 但「下线条目」与「版本号」是例外（每次启动都执行）：这两件事必须能随包生效，
+ *      否则模板删不掉、前端也因为版本号没变而永远不会重拉。
  */
 @Service
 public class SpecService implements ApplicationRunner {
@@ -36,6 +39,17 @@ public class SpecService implements ApplicationRunner {
 
     /** meta 条目的固定主键 */
     public static final String META_ID = "meta";
+
+    /**
+     * 已下线条目（下线 = 从库里删行，而不是只在代码里藏起来 —— 库才是唯一事实来源）。
+     *
+     * 为什么必须显式删：种子只在**空表**时导入，之后一律以库为准，
+     * 所以「下线某个模板/底色」改种子是没用的，老数据会一直躺在下发体里。
+     */
+    private static final Set<String> RETIRED_IDS = Set.of(
+            "generic-red-1inch", // 通用一寸 · 红底（2026-10-13 下线）
+            "red"                // 红底（仅被上面那个模板使用，成对下线）
+    );
 
     private final PhotoSpecMapper specMapper;
     private final ObjectMapper om = new ObjectMapper();
@@ -52,15 +66,45 @@ public class SpecService implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             Long count = specMapper.selectCount(null);
-            if (count != null && count > 0) {
+            if (count == null || count == 0) {
+                int n = seedFromClasspath();
+                log.info("规格库首次初始化完成，导入 {} 条", n);
+            } else {
                 log.info("规格库已存在 {} 条，跳过种子导入", count);
-                return;
             }
-            int n = seedFromClasspath();
-            log.info("规格库首次初始化完成，导入 {} 条", n);
+            // 无论是否首次导入，都要做两件「必须能随包生效」的事：
+            //   ① 清掉已下线条目 —— 早期种子留下的行不会自己消失
+            //   ② 用随包 meta 覆盖库里的 meta —— 前端是「先比版本号，一样就不重拉」，
+            //      版本号若由库里的老数据决定，改了规格它也永远不会重拉
+            purgeRetired();
+            refreshMetaFromClasspath();
         } catch (Exception e) {
             // 种子失败不能影响服务启动（前端有内置兜底）
-            log.error("规格库种子导入失败: {}", e.toString());
+            log.error("规格库种子导入 / 同步失败: {}", e.toString());
+        }
+    }
+
+    /** 删除已下线条目（幂等：库里没有就跳过） */
+    private void purgeRetired() {
+        for (String id : RETIRED_IDS) {
+            if (specMapper.selectById(id) == null) {
+                continue;
+            }
+            specMapper.deleteById(id);
+            log.info("规格库已下线条目 id={}（已从库中删除）", id);
+        }
+    }
+
+    /** 用 classpath 的 specs-seed.json 覆盖 meta 行（版本号 / 核实日期以随包数据为准） */
+    private void refreshMetaFromClasspath() throws Exception {
+        try (InputStream in = new ClassPathResource("specs-seed.json").getInputStream()) {
+            JsonNode meta = om.readTree(in).path("meta");
+            if (meta.isMissingNode()) {
+                return;
+            }
+            JsonNode node = meta.deepCopy();
+            upsert(META_ID, "meta", "规格库元信息", node.toString(),
+                    meta.path("updatedAt").asText(null), 0, true);
         }
     }
 
