@@ -222,25 +222,30 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
 }
 
 /**
- * 边缘去污染 + 轻度 alpha 内收（原位修改）
+ * 边缘去污染 + 白墙残影清理（原位修改）
  *
- * 原理：抠图源是带背景的 JPEG，边缘半透明像素的观测色
- *   C = F·a + B·(1-a)   （F=纯人像色，B=原背景色，a=alpha）
- * 直接拿 C 去和目标底色混合，等于把原背景（白墙）又掺了回去——
- * 白底上无感，红/蓝底上头发边缘就发灰。
+ * 两类背景污染，同一个反推模型 C = F·a + B·(1-a)（F=纯人像色，B=原背景色）：
  *
- * 处理：
- *  1. 用 a<0.03 的像素均值估计原背景色 B（比硬编码白色更稳，兼容非白背景）；
- *  2. 对 0.10 ≤ a < 0.85 的边缘带反推 F = (C - B·(1-a)) / a 并 clamp；
- *     合成时 F·a + 目标底色·(1-a)，背景影响即被替换为目标底色；
- *  3. a < 0.10 的光环直接置 0（向内收 1px 量级），避免低 alpha 区
- *     反推放大噪声（a=0.1 时误差放大 10 倍）。
+ * 【① 半透明边缘】alpha 0.1~0.85 的边缘带像素混着原背景色，
+ *   直接铺红/蓝底显形为灰霜 → 用 mask 给出的 1-a 反推纯人像色。
+ *
+ * 【② 白墙残影（实心）】蓬松发丝 + 浅色背景处，分割把 alpha 判成实心，
+ *   但颜色是「发丝+白墙」的低饱和灰白混合色（实测头顶带 17% 像素，
+ *   均值 RGB≈187,178,175）——白底输出无感，红/蓝底上是头顶白霜。
+ *   mask 证据失效，改用颜色证据重估背景占比 w：低饱和、越亮越像背景，
+ *   w = (lum − 70) / (B亮度 − 70)。仅作用于上半区、且距真背景
+ *   ≤ GHOST_DIST px 的像素（chamfer 距离场约束，保护镜片反光等
+ *   远离背景的亮色区域）。
+ *
+ * 处理后写回纯前景色 F = (C − B·w)/(1−w)，alpha 更新为 1−w，
+ * 后续与目标底色的混合即完成「背景贡献 → 新底色」的置换。
  * 白底输出几乎不变（F·a + 白·(1-a) ≈ 原观测值），深色底边缘明显变净。
  */
 function decontaminateEdge(alpha, d, outW, outH) {
   const n = outW * outH;
-  const LOW = 0.1;
-  const HIGH = 0.85;
+  const GHOST_DIST = 14;
+  const SAT_MAX = 42;
+  const ghostRow = Math.floor(outH * 0.58);
 
   // 1) 估计原背景色（近透明像素均值；样本太少则退回纯白）
   let br = 0;
@@ -258,23 +263,72 @@ function decontaminateEdge(alpha, d, outW, outH) {
   const B0 = cnt > n * 0.005 ? br / cnt : 255;
   const B1 = cnt > n * 0.005 ? bgG / cnt : 255;
   const B2 = cnt > n * 0.005 ? bb / cnt : 255;
+  const LB = (B0 + B1 + B2) / 3;
+  const LUM_MIN = Math.max(150, LB - 70);
 
-  // 2) 反推 + 收边
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const a = alpha[i];
-    if (a <= 0) continue;
-    if (a < LOW) {
-      alpha[i] = 0;
-      continue;
+  // 2) chamfer 距离场：0 = 确定背景（alpha<0.08），向外近似欧氏距离
+  const dist = new Float32Array(n).fill(1e6);
+  for (let i = 0; i < n; i++) if (alpha[i] < 0.08) dist[i] = 0;
+  for (let y = 0; y < outH; y++) {
+    for (let x = 0; x < outW; x++) {
+      const i = y * outW + x;
+      let v = dist[i];
+      if (x > 0 && dist[i - 1] + 1 < v) v = dist[i - 1] + 1;
+      if (y > 0) {
+        if (dist[i - outW] + 1 < v) v = dist[i - outW] + 1;
+        if (x > 0 && dist[i - outW - 1] + 1.41 < v) v = dist[i - outW - 1] + 1.41;
+        if (x < outW - 1 && dist[i - outW + 1] + 1.41 < v) v = dist[i - outW + 1] + 1.41;
+      }
+      dist[i] = v;
     }
-    if (a >= HIGH) continue; // 实心区不受背景影响，不动
-    const w = 1 - a;
-    let fr = (d[p] - B0 * w) / a;
-    let fg = (d[p + 1] - B1 * w) / a;
-    let fb = (d[p + 2] - B2 * w) / a;
-    d[p] = fr < 0 ? 0 : fr > 255 ? 255 : fr;
-    d[p + 1] = fg < 0 ? 0 : fg > 255 ? 255 : fg;
-    d[p + 2] = fb < 0 ? 0 : fb > 255 ? 255 : fb;
+  }
+  for (let y = outH - 1; y >= 0; y--) {
+    for (let x = outW - 1; x >= 0; x--) {
+      const i = y * outW + x;
+      let v = dist[i];
+      if (x < outW - 1 && dist[i + 1] + 1 < v) v = dist[i + 1] + 1;
+      if (y < outH - 1) {
+        if (dist[i + outW] + 1 < v) v = dist[i + outW] + 1;
+        if (x < outW - 1 && dist[i + outW + 1] + 1.41 < v) v = dist[i + outW + 1] + 1.41;
+        if (x > 0 && dist[i + outW - 1] + 1.41 < v) v = dist[i + outW - 1] + 1.41;
+      }
+      dist[i] = v;
+    }
+  }
+
+  // 3) 反推 + 残影重估 + 收边
+  for (let y = 0; y < outH; y++) {
+    const inGhost = y < ghostRow;
+    for (let x = 0; x < outW; x++) {
+      const i = y * outW + x;
+      const a = alpha[i];
+      if (a <= 0) continue;
+      const p = i * 4;
+      let w = 1 - a; // mask 证据：背景占比
+
+      // 颜色证据：上半区、近背景、低饱和、亮的像素按亮度重估
+      if (inGhost && dist[i] <= GHOST_DIST) {
+        const r = d[p];
+        const g = d[p + 1];
+        const b = d[p + 2];
+        if (Math.max(r, g, b) - Math.min(r, g, b) <= SAT_MAX) {
+          const lum = (r + g + b) / 3;
+          if (lum >= LUM_MIN) {
+            w = Math.max(w, Math.min(1, (lum - 70) / (LB - 70)));
+          }
+        }
+      }
+
+      if (w >= 0.9) {          // 背景占比过高（含原 a<0.1 清零逻辑）
+        alpha[i] = 0;
+        continue;
+      }
+      const inv = 1 / (1 - w);
+      d[p] = clamp((d[p] - B0 * w) * inv);
+      d[p + 1] = clamp((d[p + 1] - B1 * w) * inv);
+      d[p + 2] = clamp((d[p + 2] - B2 * w) * inv);
+      alpha[i] = 1 - w;
+    }
   }
 }
 
