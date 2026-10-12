@@ -16,8 +16,8 @@ import java.util.Base64;
  * 设计要点（证件照场景，与短视频美颜完全不同）：
  *   1. 只在皮肤 mask 内生效——否则白底/蓝底背景一起被推亮，整张照片发灰
  *   2. YCbCr 空间只提亮 Y 通道——RGB 直接加亮度会让肤色发灰发青、丢血色
- *   3. 自适应锚点 + 提亮封顶——锚点 = 皮肤区亮度中位数 +9，阴影区按 75% 收敛，
- *      单像素提亮 ≤ 26/255；锚点以上（含高光）不动，保留立体感
+ *   3. 自适应锚点 + 提亮封顶——锚点 = 皮肤区亮度中位数 +17，阴影区按 85% 收敛，
+ *      单像素提亮 ≤ 36/255；锚点以上（含高光）不动，保留立体感
  *   4. 高光保护——已经很亮的区域衰减提亮幅度，避免脸「曝掉」丢立体感
  *   5. 绝不做瘦脸/大眼——办证照片官方禁止改变面部特征，过度处理会被判「失真」
  *
@@ -32,23 +32,25 @@ public class SkinBeautyService {
 
     /**
      * 单像素最大提亮量（0-255 尺度）。
-     * v2 实测：v1 的「锚点+3 再乘 gain」公式在中位数皮肤处 delta≈0.1，肉眼不可见。
-     * v2 锚点直接抬 9，阴影区按差值 75% 收敛（上限 26），中位数区 ≈ +7，
-     * 视觉上是「气色变好」而非「换了一张脸」。
+     * v1：锚点+3 再乘 gain ⇒ 中位数处 delta≈0.1，肉眼不可见；
+     * v2：锚点直接抬 9、阴影收敛 75% ⇒ 中位数处 ≈ +5.5，用户仍反馈「看不出区别」
+     *     （除剂量偏小外，当时端上根本没采用美白后的像素，见 PortraitCompositeService 注释）；
+     * v3（当前）：锚点抬 17、阴影收敛 85%、封顶 36 ⇒ 中位数处 ≈ +12，在真实人像上
+     *     重放实测：肤色明显白净、气色变好，五官阴影与立体感保留，无「假白/过曝」。
      */
-    private static final int MAX_DELTA = 26;
+    private static final int MAX_DELTA = 36;
 
     /** 皮肤亮度中位数的目标抬升量（0-255 尺度） */
-    private static final double MEDIAN_LIFT = 9.0;
+    private static final double MEDIAN_LIFT = 17.0;
 
-    /** 阴影区向锚点收敛的比例（1.0 = 完全拉平，丢立体感；0.75 保留光影层次） */
-    private static final double SHADOW_KEEP = 0.75;
+    /** 阴影区向锚点收敛的比例（1.0 = 完全拉平，丢立体感；0.85 保留光影层次） */
+    private static final double SHADOW_KEEP = 0.85;
 
-    /** 去黄强度（cr 偏移向中性收 12%，发青临界之内） */
-    private static final double DEYELLOW = 0.12;
+    /** 去黄强度（cr 偏移向中性收 18%，发青临界之内） */
+    private static final double DEYELLOW = 0.18;
 
     /** 磨皮强度（0-1，越高越平；保边阈值见 smooth()） */
-    public static final double SMOOTH_ID = 0.20;
+    public static final double SMOOTH_ID = 0.35;
 
     /**
      * 美肤主入口。

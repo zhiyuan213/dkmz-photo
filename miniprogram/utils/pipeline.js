@@ -11,7 +11,13 @@
  * 抠图通道二选一（运行时自动降级）：
  *  - 端上 MODNet（默认）：离线、免上传
  *  - 云端精修（opts.cloudSegment）：调用方传入 base64→Promise 函数，走腾讯云 BDA
- *    人像分割，发丝/复杂背景边缘更准；失败或未开通时自动回退端上，功能不中断
+ *    人像分割 + 面部皮肤美白，发丝/复杂背景边缘更准；失败或未开通时自动回退端上，
+ *    功能不中断
+ *
+ * 云端返回两种形态（按后端能力自动识别）：
+ *  - 成品图（res.finished=true）：云端已把「美白后的像素 + 换底 + 边缘净化」一次做完，
+ *    端上只负责加水印、按规格体积导出 —— 美的像素这才真正进得了成片
+ *  - 透明底 PNG（老后端）：端上按 alpha 自行换底合成（保留的历史链路）
  *
  * 隐私：端上通道原图全程不出手机；云端精修开启时裁剪图会上传至腾讯云做分割。
  */
@@ -218,6 +224,26 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
     };
     img.onerror = () => reject(new Error('图片解码失败'));
     img.src = croppedPath;
+  });
+}
+
+/**
+ * 成品图铺满画布（云端成品图路径）
+ * 像素、换底、边缘净化都已在云端完成，这里只把成品图放到离屏画布上，
+ * 供后续「加水印预览」与「按规格体积导出高清版」两条出口复用同一块画布。
+ * 尺寸不一致时按比例铺满（正常情况两者相同，零缩放）。
+ */
+function canvasFromImage(imgPath, outW, outH) {
+  return new Promise((resolve, reject) => {
+    const canvas = wx.createOffscreenCanvas({ type: '2d', width: outW, height: outH });
+    const ctx = canvas.getContext('2d');
+    const img = canvas.createImage();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, outW, outH);
+      resolve(canvas);
+    };
+    img.onerror = () => reject(new Error('成品图解码失败'));
+    img.src = imgPath;
   });
 }
 
@@ -456,10 +482,10 @@ function fileToBase64(path) {
   });
 }
 
-/** 把 base64 PNG 写成临时文件（offscreen canvas 的 Image 对 temp 路径支持最稳） */
-function base64ToTempPng(b64) {
+/** 把 base64 图片写成临时文件（offscreen canvas 的 Image 对 temp 路径支持最稳） */
+function base64ToTempFile(b64, ext) {
   return new Promise((resolve, reject) => {
-    const p = `${wx.env.USER_DATA_PATH}/cloud_segment_${Date.now()}.png`;
+    const p = `${wx.env.USER_DATA_PATH}/cloud_segment_${Date.now()}.${ext || 'png'}`;
     wx.getFileSystemManager().writeFile({
       filePath: p,
       data: b64,
@@ -470,8 +496,18 @@ function base64ToTempPng(b64) {
   });
 }
 
+/** 回收落盘的临时中间产物（USER_DATA_PATH 不会自动清理），失败忽略 */
+function removeTempFile(p) {
+  if (!p) return;
+  try {
+    wx.getFileSystemManager().unlink({ filePath: p, fail: () => {} });
+  } catch (e) {
+    /* 忽略 */
+  }
+}
+
 /**
- * 从云端返回的透明底 PNG 提取 alpha 蒙版。
+ * 从云端返回的透明底 PNG 提取 alpha 蒙版（老后端兼容链路）。
  * 输入即裁剪图（outW×outH），返回 PNG 尺寸与之一致，后续 resizeMask 零缩放直通。
  */
 function maskFromPng(pngPath) {
@@ -496,38 +532,60 @@ function maskFromPng(pngPath) {
 }
 
 /**
- * 云端精修抠图：单独产一张「上传小图」（长边 512、质量 0.8），
- * 保证 base64 < 100KB —— callContainer 请求包硬限制 100KB（-606001），
- * 微信二次压缩过的相册图噪点多，480×640@0.95 的原图裁剪会超限。
- * 蒙版后续会 resizeMask 缩放回输出尺寸，上传图小一点不影响分割精度。
- * cloudSegment(base64) 需 resolve { ok:true, image:<png base64> }，reject / ok:false 一律视为失败。
+ * 云端精修的「上传图」策略：
+ *   上传图 = 与输出同尺寸（480×640 量级）、同一个裁剪框，质量按梯队自适应下调。
+ *   ① 构图与输出一致 ⇒ 云端成品图尺寸就等于输出尺寸，端上零缩放、分辨率不缩水；
+ *   ② base64 必须 < 100KB（callContainer 请求包硬限制，超了报 -606001）。
+ *      微信二次压缩过的相册图噪点多，同质量下体积明显更大（480×640@0.95 实测 89.8KB
+ *      卡在临界，相机图过、相册图挂），所以从 0.9 起按梯队逐级回退。
  */
-const CLOUD_UPLOAD_LONG_EDGE = 512;
-const CLOUD_UPLOAD_QUALITY = 0.8;
+const CLOUD_UPLOAD_QUALITY_LADDER = [0.9, 0.85, 0.8, 0.72, 0.65];
 const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
 
-function cloudMatting(imgPath, box, outW, outH, cloudSegment) {
-  const s = CLOUD_UPLOAD_LONG_EDGE / Math.max(outW, outH);
-  const w = Math.max(1, Math.round(outW * s));
-  const h = Math.max(1, Math.round(outH * s));
-  return cropAndScale(imgPath, box, w, h, CLOUD_UPLOAD_QUALITY)
-    .then((uploadPath) => fileToBase64(uploadPath))
-    .then((b64) => {
-      if (b64.length > CLOUD_PAYLOAD_LIMIT) {
-        throw new Error(`上传图过大(${Math.round(b64.length / 1024)}KB)`);
-      }
-      return cloudSegment(b64);
-    })
+/** 裁剪框越出原图的顶部行数（calcCropBox 只允许顶部越界），用于告知云端强制透明 */
+function outOfSourceTopRows(box, outH) {
+  const pxY = box.height / outH;
+  return Math.min(outH, Math.max(0, Math.ceil((0 - box.top) / pxY)));
+}
+
+/**
+ * 云端精修主流程。
+ * cloudSegment(base64, extra) 需 resolve { ok:true, image, finished?, beautyApplied? }；
+ * reject / ok:false 一律视为失败（由上层回退端上抠图）。
+ *
+ * @param {object} req { imgPath, box, outW, outH, bgHex, outTop }
+ * @returns {Promise<{finishedPath?:string, mask?:Float32Array, maskWidth?:number,
+ *                    maskHeight?:number, beautyApplied:boolean}>}
+ */
+function cloudMatting(req, cloudSegment) {
+  const { imgPath, box, outW, outH, bgHex, outTop } = req;
+  const shoot = (i) => {
+    const q = CLOUD_UPLOAD_QUALITY_LADDER[i];
+    return cropAndScale(imgPath, box, outW, outH, q)
+      .then(fileToBase64)
+      .then((b64) => {
+        if (b64.length <= CLOUD_PAYLOAD_LIMIT) return b64;
+        if (i + 1 < CLOUD_UPLOAD_QUALITY_LADDER.length) return shoot(i + 1);
+        throw new Error(`上传图过大（${Math.round(b64.length / 1024)}KB）`);
+      });
+  };
+  return shoot(0)
+    .then((b64) => cloudSegment(b64, { bgHex, outTop }))
     .then((res) => {
       if (!res || !res.ok || !res.image) {
         throw new Error((res && res.msg) || '云端精修不可用');
       }
-      return base64ToTempPng(res.image)
+      const beautyApplied = res.beautyApplied === true;
+      if (res.finished) {
+        return base64ToTempFile(res.image, 'jpg').then((p) => ({
+          finishedPath: p,
+          beautyApplied,
+        }));
+      }
+      // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
+      return base64ToTempFile(res.image, 'png')
         .then(maskFromPng)
-        .then((m) => {
-          m.beautyApplied = res.beautyApplied === true;
-          return m;
-        });
+        .then((m) => Object.assign(m, { beautyApplied }));
     });
 }
 
@@ -552,7 +610,8 @@ function localMatting(croppedPath, session, shortEdge) {
  *   session       已加载的推理会话（matting.createSession 产物）
  *   shortEdge     推理短边，默认 384
  *   watermark     水印文字；传空串则不加水印（付费高清版）
- *   cloudSegment  可选，云端精修：(裁剪图 base64) => Promise<{ok,image}>；
+ *   cloudSegment  可选，云端精修：(上传图 base64, {bgHex, outTop}) =>
+ *                 Promise<{ok, image, finished?, beautyApplied?}>；
  *                 失败/未开通自动回退端上 MODNet
  *   onStep        (step, info) 进度回调：face / crop / matting / compose / size
  * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo/mattingMode）
@@ -601,6 +660,7 @@ function makeIdPhoto(opts) {
           mask: r.mask,
           maskWidth: r.maskWidth,
           maskHeight: r.maskHeight,
+          finishedPath: r.finishedPath,   // 云端成品图（有则不再走端上换底）
           mattingMs: ms,
           mattingMode: mode,
         };
@@ -610,7 +670,17 @@ function makeIdPhoto(opts) {
         return local();
       }
       // 云端优先，任何失败（未开通/网络/服务错误）静默回退端上，出片不中断
-      return cloudMatting(o.imgPath, box, outW, outH, o.cloudSegment)
+      return cloudMatting(
+        {
+          imgPath: o.imgPath,
+          box,
+          outW,
+          outH,
+          bgHex: o.bgHex || '#FFFFFF',
+          outTop: outOfSourceTopRows(box, outH),
+        },
+        o.cloudSegment
+      )
         .then((r) => finish(r, 'cloud'))
         .catch((e) => {
           // api 层 reject 的是 {code,msg} 对象而非 Error，msg/message 都兜住
@@ -627,6 +697,16 @@ function makeIdPhoto(opts) {
       const t2 = Date.now();
       // 合成干净的画布（无水印）；水印在导出阶段按版本叠加
       const wm = o.watermark === undefined ? '登科喵证件照 · 预览' : o.watermark;
+      if (ctx0.finishedPath) {
+        // 云端成品图：美白像素、换底、边缘净化都已在后端完成，
+        // 端上不再触碰像素（这正是历史 bug 的根源：端上只读 alpha、像素用本地图，
+        // 云端美白的像素永远进不了成片）
+        return canvasFromImage(ctx0.finishedPath, outW, outH).then((canvas) => {
+          removeTempFile(ctx0.finishedPath);
+          metrics.push({ k: '成品合成', v: '云端完成（含换底 / 边缘净化）' });
+          return Object.assign(ctx0, { canvas, wm });
+        });
+      }
       return buildComposite(
         ctx0.croppedPath,
         ctx0.mask,

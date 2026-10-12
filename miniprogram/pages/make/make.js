@@ -211,7 +211,7 @@ Page({
         bgHex: bg.hex,
         session: this.session,
         cloudSegment: useCloud
-          ? (b64) => api.cloudSegment(b64, this.data.beautyOn)
+          ? (b64, extra) => api.cloudSegment(b64, this.data.beautyOn, extra)
           : null,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
