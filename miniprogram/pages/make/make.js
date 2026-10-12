@@ -181,7 +181,9 @@ Page({
   },
 
   resetSteps() {
-    const mattingLabel = this.data.cloudOn && api.isCloudEnabled() ? '云端抠图 · 精修' : '端上抠图';
+    const mattingLabel = this.data.cloudOn && api.isCloudEnabled()
+      ? (this.data.beautyOn ? '云端抠图 · 精修' : '云端抠图 · 换底')
+      : '端上抠图';
     this.setData({
       steps: STEPS.map((s) => ({
         key: s.key,
@@ -213,6 +215,8 @@ Page({
         cloudSegment: useCloud
           ? (b64, extra) => api.cloudSegment(b64, this.data.beautyOn, extra)
           : null,
+        // 只替换背景（肤色提亮关闭）⇒ 云端只回 alpha，端上用本地图换底
+        alphaOnly: !this.data.beautyOn,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

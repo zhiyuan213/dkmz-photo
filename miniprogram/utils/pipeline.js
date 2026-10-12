@@ -11,14 +11,17 @@
  * 抠图通道二选一（运行时自动降级）：
  *  - 端上 MODNet（默认）：离线、免上传
  *  - 云端精修（opts.cloudSegment）：调用方传入 base64→Promise 函数，走腾讯云 BDA
- *    人像分割 + 面部皮肤美白，发丝/复杂背景边缘更准；失败或未开通时自动回退端上，
+ *    人像分割（+ 可选面部皮肤美白），发丝/复杂背景边缘更准；失败或未开通时自动回退端上，
  *    功能不中断
  *
- * 云端返回两种形态（按后端能力自动识别）：
- *  - 成品图（res.finished=true）：云端已把「美白后的像素 + 换底 + 边缘净化」一次做完，
- *    端上只负责加水印、按规格体积导出 —— 美的像素这才真正进得了成片
+ * 云端返回三种形态（按后端能力/入参自动识别）：
+ *  - alpha 灰度图（alphaOnly=true，只替换背景）：云端只回 alpha（10~30KB），
+ *    端上用本地裁剪图 + alpha 自己换底 —— 端上像素零损失、不经有损 JPEG，
+ *    与「成品图模式」相比少传一份 RGB
+ *  - 成品图（res.finished=true，替换背景+美颜）：云端已把「美白后的像素 + 换底 +
+ *    边缘净化」一次做完，端上只负责加水印、按规格体积导出 —— 美的像素这才真正进得了成片
  *  - 透明底 PNG（老后端）：端上按 alpha 自行换底合成（保留的历史链路）
- *    这条链路的端上处理顺序（换深色底时全开，白底自动全部跳过）：
+ *    后两类的端上处理顺序（换深色底时全开，白底自动全部跳过）：
  *      cleanGhostAlpha → computeWallMask(原始数据) → decontaminateEdge → processHair
  *    computeWallMask 必须在 decontaminateEdge 之前算，因为去污染会改写 alpha/RGB、
  *    污染泛洪种子；processHair 用它的结果治深色底上的发丝白霜。
@@ -742,6 +745,37 @@ function maskFromPng(pngPath) {
 }
 
 /**
+ * 从云端返回的 alpha 灰度 PNG 提取蒙版（「只替换背景」链路）。
+ *
+ * 后端 alphaOnly 模式回的是 8 位灰度 PNG（无 alpha 通道），编码约定
+ * 「灰度值 = alpha 值」⇒ 取 R 通道即可（灰度图 R=G=B）。与 maskFromPng 的
+ * 区别就在这一个通道：灰度图 alpha 通道恒为 255，读 d[i*4+3] 会得到全 1 的废蒙版。
+ *
+ * 为什么这条链路更划算：不美颜时端上本地像素就是最终像素，服务端只提供
+ * alpha 这一份新信息即可 ⇒ 响应从 200~400KB 降到 10~30KB，且不经过有损 JPEG。
+ */
+function maskFromGrayPng(pngPath) {
+  return new Promise((resolve, reject) => {
+    const probe = wx.createOffscreenCanvas({ type: '2d', width: 8, height: 8 });
+    const img = probe.createImage();
+    img.onload = () => {
+      const w = img.width;
+      const h = img.height;
+      const canvas = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const d = ctx.getImageData(0, 0, w, h).data;
+      const n = w * h;
+      const mask = new Float32Array(n);
+      for (let i = 0; i < n; i++) mask[i] = d[i * 4] / 255;
+      resolve({ mask, maskWidth: w, maskHeight: h });
+    };
+    img.onerror = () => reject(new Error('alpha 灰度图解码失败'));
+    img.src = pngPath;
+  });
+}
+
+/**
  * 云端精修的「上传图」策略：
  *   上传图 = 与输出同尺寸（480×640 量级）、同一个裁剪框，质量按梯队自适应下调。
  *   ① 构图与输出一致 ⇒ 云端成品图尺寸就等于输出尺寸，端上零缩放、分辨率不缩水；
@@ -760,15 +794,18 @@ function outOfSourceTopRows(box, outH) {
 
 /**
  * 云端精修主流程。
- * cloudSegment(base64, extra) 需 resolve { ok:true, image, finished?, beautyApplied? }；
+ * cloudSegment(base64, extra) 需 resolve：
+ *   - 只替换背景（alphaOnly）：{ ok:true, alpha, width, height }
+ *   - 成品图模式：{ ok:true, image, finished:true, beautyApplied? }
+ *   - 兼容模式：{ ok:true, image(透明底 PNG), origBg?, beautyApplied? }
  * reject / ok:false 一律视为失败（由上层回退端上抠图）。
  *
- * @param {object} req { imgPath, box, outW, outH, bgHex, outTop }
+ * @param {object} req { imgPath, box, outW, outH, bgHex, outTop, alphaOnly }
  * @returns {Promise<{finishedPath?:string, mask?:Float32Array, maskWidth?:number,
- *                    maskHeight?:number, beautyApplied:boolean}>}
+ *                    maskHeight?:number, beautyApplied:boolean, alphaOnly?:boolean}>}
  */
 function cloudMatting(req, cloudSegment) {
-  const { imgPath, box, outW, outH, bgHex, outTop } = req;
+  const { imgPath, box, outW, outH, bgHex, outTop, alphaOnly } = req;
   const shoot = (i) => {
     const q = CLOUD_UPLOAD_QUALITY_LADDER[i];
     return cropAndScale(imgPath, box, outW, outH, q)
@@ -780,12 +817,19 @@ function cloudMatting(req, cloudSegment) {
       });
   };
   return shoot(0)
-    .then((b64) => cloudSegment(b64, { bgHex, outTop }))
+    .then((b64) => cloudSegment(b64, alphaOnly ? { alphaOnly: true } : { bgHex, outTop }))
     .then((res) => {
-      if (!res || !res.ok || !res.image) {
+      if (!res || !res.ok || (!res.image && !res.alpha)) {
         throw new Error((res && res.msg) || '云端精修不可用');
       }
       const beautyApplied = res.beautyApplied === true;
+      // 只替换背景：云端只回 alpha 灰度图，端上用本地裁剪图自己换底
+      //（走 buildComposite 的去污染 + 头发修复链，观感不降级、像素零损失）
+      if (res.alpha) {
+        return base64ToTempFile(res.alpha, 'png')
+          .then(maskFromGrayPng)
+          .then((m) => Object.assign(m, { beautyApplied: false, alphaOnly: true }));
+      }
       if (res.finished) {
         return base64ToTempFile(res.image, 'jpg').then((p) => ({
           finishedPath: p,
@@ -820,9 +864,11 @@ function localMatting(croppedPath, session, shortEdge) {
  *   session       已加载的推理会话（matting.createSession 产物）
  *   shortEdge     推理短边，默认 384
  *   watermark     水印文字；传空串则不加水印（付费高清版）
- *   cloudSegment  可选，云端精修：(上传图 base64, {bgHex, outTop}) =>
- *                 Promise<{ok, image, finished?, beautyApplied?}>；
+ *   cloudSegment  可选，云端精修：(上传图 base64, {alphaOnly?, bgHex?, outTop}) =>
+ *                 Promise<{ok, alpha?|image?, finished?, beautyApplied?}>；
  *                 失败/未开通自动回退端上 MODNet
+ *   alphaOnly     可选，true = 只替换背景（不美颜）：云端只回 alpha 灰度图，
+ *                 端上用本地裁剪图换底（省流量、不经有损 JPEG）
  *   onStep        (step, info) 进度回调：face / crop / matting / compose / size
  * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo/mattingMode）
  */
@@ -861,7 +907,12 @@ function makeIdPhoto(opts) {
           v: mode === 'cloud' ? `${ms} ms（腾讯云 BDA）` : `${ms} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）`,
         });
         if (mode === 'cloud') {
-          metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : '未生效' });
+          if (r.alphaOnly) {
+            // 只替换背景：云端只回 alpha，换底在端上完成（流量 10~30KB 级）
+            metrics.push({ k: '云端回传', v: 'alpha 灰度图（端上换底）' });
+          } else {
+            metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : '未生效' });
+          }
         }
         return {
           fd,
@@ -888,6 +939,8 @@ function makeIdPhoto(opts) {
           outH,
           bgHex: o.bgHex || '#FFFFFF',
           outTop: outOfSourceTopRows(box, outH),
+          // 只替换背景（不美颜）⇒ 只要 alpha，端上换底；美颜则走后端成品图模式
+          alphaOnly: !!o.alphaOnly,
         },
         o.cloudSegment
       )

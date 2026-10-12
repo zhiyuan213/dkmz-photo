@@ -176,20 +176,31 @@ function consumeExport(clientNo, specId, specOk) {
 // ============================================================
 
 /**
- * 云端精修：上传裁剪图 base64，返回成品图 base64。
- * 带 bgHex 时后端走「成品图模式」：连换底、边缘去污染一起做完，返回不透明 JPEG
- * （响应里的 finished=true），端上直接拿它加水印/导出 —— 云端美白的像素这才进得了成片。
- * 不带则返回透明底 PNG（老版本后端兼容）。
+ * 云端精修：上传裁剪图 base64。
+ *
+ * 两种出口，由 extra.alphaOnly 决定：
+ *  - extra.alphaOnly=true（只替换背景，不美颜）：后端只回 alpha 灰度 PNG
+ *    （{ok, alpha, width, height}，约 10~30KB），端上用本地裁剪图 + alpha
+ *    自己换底。不传 bgHex —— 因为不需要后端换底，也不需要它回 RGB。
+ *  - 否则传 bgHex 走「成品图模式」：后端连换底（+可选美肤）一次做完，
+ *    返回不透明 JPEG（finished=true），端上直接拿它加水印/导出。
+ *    （只传 image 不带 bgHex 时才回透明底 PNG，老版本后端兼容路径。）
  *
  * @param {string} imageBase64 裁剪图 base64（与输出同尺寸）
  * @param {boolean} beautify 是否同时做保守美肤（肤色提亮+磨皮，作用区域=面部皮肤 mask）；
  *                           需后端 BDAB_BEAUTY_ENABLED=true，否则后端忽略并只抠图
- * @param {object} extra {bgHex, outTop}：目标底色 / 裁剪框越出原图的顶部行数
+ * @param {object} extra {alphaOnly, bgHex, outTop}
+ *        alphaOnly：只替换背景（不美颜）时的 alpha-only 出口
+ *        bgHex：目标底色 / outTop：裁剪框越出原图的顶部行数
  * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
  */
 function cloudSegment(imageBase64, beautify = false, extra = null) {
-  const body = { image: imageBase64, beauty: !!beautify };
-  if (extra && extra.bgHex) {
+  const alphaOnly = !!(extra && extra.alphaOnly);
+  // alphaOnly 时不带 bgHex：带了后端就会走成品图模式（回 JPEG，失去 alpha 的流量收益）
+  const body = { image: imageBase64, beauty: alphaOnly ? false : !!beautify };
+  if (alphaOnly) {
+    body.alphaOnly = true;
+  } else if (extra && extra.bgHex) {
     body.bgHex = extra.bgHex;
     body.outTop = extra.outTop || 0;
   }

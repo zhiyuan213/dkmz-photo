@@ -4,6 +4,7 @@ import com.dkmz.photo.service.BdaSegmentService;
 import com.dkmz.photo.service.CustomSegmentService;
 import com.dkmz.photo.service.PortraitCompositeService;
 import com.dkmz.photo.service.SkinBeautyService;
+import com.dkmz.photo.support.AlphaExtractor;
 import com.dkmz.photo.support.BackgroundColorEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +27,18 @@ import java.util.Map;
  *     beauty: true|false,           // 可选，是否做保守美肤（多消耗 1 次 BDA 调用）
  *     bgHex:  "#FFFFFF",            // 可选，目标底色；给了就走「成品图」模式
  *     outTop: 12                    // 可选，裁剪框越出原图的顶部行数（补白底，强制透明）
+ *     alphaOnly: true               // 可选，只替换背景（不美颜）时用：只回 alpha 灰度图
  *   }
  *
- * 返回：
- *   成品图模式（带 bgHex）：{ ok:true, image:"<不透明 JPEG base64>", finished:true, beautyApplied, costMs }
- *   兼容模式（不带 bgHex）：{ ok:true, image:"<透明底 PNG base64>", origBg:[r,g,b], beautyApplied, costMs }
+ * 返回（三选一，按入参决定）：
+ *   ① alphaOnly（只替换背景，不美颜）：
+ *      { ok:true, alpha:"<8 位灰度 PNG base64，灰度值=alpha>", width, height, beautyApplied:false, costMs }
+ *      服务端只做一件事——抠图；换底由端上用「本地裁剪图 + alpha」完成。
+ *      一次 BDA 调用、响应 10~30KB（对比透明底 RGBA 的 200~400KB）。
+ *   ② 成品图模式（带 bgHex，替换背景+美颜走这条）：
+ *      { ok:true, image:"<不透明 JPEG base64>", finished:true, beautyApplied, costMs }
+ *   ③ 兼容模式（既不带 bgHex 也不带 alphaOnly，老端上）：
+ *      { ok:true, image:"<透明底 PNG base64>", origBg:[r,g,b], beautyApplied, costMs }
  *   失败：{ ok:false, code:"BDA_DISABLED"|"BAD_REQUEST"|"BAD_IMAGE"|"BDA_FAIL", msg }
  *
  * origBg = 服务端从抠图结果「透明区」统计出的原背景色，供端上换底去色边使用：
@@ -51,6 +59,11 @@ import java.util.Map;
  * 「成品图模式」的意义：端上不再需要拿 alpha 去和本地裁剪图混合，美白的像素
  * 才真正进得了成片（历史上端上只读 alpha、像素用本地图，导致美白等于没做）。
  * 不带 bgHex 时依旧返回透明底 PNG，老版本端上行为完全不变。
+ *
+ * 「alphaOnly 模式」的意义（对应产品功能「只替换背景」）：既然不美颜，
+ * 端上本地像素就是最终像素，服务端多传一份 RGB 毫无信息量 ⇒ 只回 alpha 灰度图。
+ * 该模式下不做美肤、不做换底，响应体量降一个数量级，端上用现有换底链
+ * （反推去色边 + 头发白霜修复）合成，观感与质量都不降级。
  *
  * 设计原则（不落盘）：
  *   - 只收 base64，处理完立即返回，全程内存
@@ -97,6 +110,8 @@ public class PhotoSegmentController {
         // bgHex 存在 ⇒ 成品图模式（后端连换底一起做，端上直接用）
         String bgHex = body == null ? null : (String) body.get("bgHex");
         boolean wantFinished = bgHex != null && !bgHex.trim().isEmpty();
+        // alphaOnly ⇒ 「只替换背景」：只回 alpha 灰度图，不美肤、不换底
+        boolean alphaOnly = body != null && Boolean.TRUE.equals(body.get("alphaOnly"));
         int outTop = toInt(body == null ? null : body.get("outTop"), 0);
         if (image == null || image.isEmpty()) {
             out.put("ok", false);
@@ -106,6 +121,30 @@ public class PhotoSegmentController {
         }
 
         long t0 = System.currentTimeMillis();
+
+        // ---- 出口①：只替换背景（不美颜）→ 只回 alpha 灰度图 ----
+        // 优先级最高：端上明确只要 alpha 时，不做美肤也不再传 RGB（流量降一个数量级）
+        if (alphaOnly) {
+            try {
+                String png = segmentService.segment(image);
+                AlphaExtractor.Result a = AlphaExtractor.extract(png);
+                long cost = System.currentTimeMillis() - t0;
+                // 只记尺寸/体积/耗时，绝不落图片内容
+                log.info("segment alphaOnly user={} {}x{} alphaKB={} cost={}ms",
+                        userTag(openid), a.width, a.height,
+                        Math.round(a.base64.length() / 1024.0), cost);
+                out.put("ok", true);
+                out.put("alpha", a.base64);
+                out.put("width", a.width);
+                out.put("height", a.height);
+                out.put("beautyApplied", false);
+                out.put("costMs", cost);
+                return out;
+            } catch (Exception e) {
+                return fail(out, e);
+            }
+        }
+
         boolean beautyApplied = false;
         String input = image;
         if (wantBeauty && beautyEnabled) {
@@ -125,8 +164,7 @@ public class PhotoSegmentController {
             long cost = System.currentTimeMillis() - t0;
             // 只记 openid 前缀与耗时，不落任何图片内容
             log.info("segment 调用 user={} beauty={} finished={} cost={}ms",
-                    openid == null ? "anonymous" : openid.substring(0, Math.min(8, openid.length())) + "…",
-                    beautyApplied, wantFinished, cost);
+                    userTag(openid), beautyApplied, wantFinished, cost);
             out.put("ok", true);
             out.put("image", payload);
             if (wantFinished) out.put("finished", true);
@@ -147,23 +185,31 @@ public class PhotoSegmentController {
             out.put("beautyApplied", beautyApplied);
             out.put("costMs", cost);
             return out;
-        } catch (IllegalArgumentException e) {
-            out.put("ok", false);
+        } catch (Exception e) {
+            return fail(out, e);
+        }
+    }
+
+    /** 统一的失败响应：按异常类型映射错误码，只记消息不记图片 */
+    private Map<String, Object> fail(Map<String, Object> out, Exception e) {
+        out.put("ok", false);
+        if (e instanceof IllegalArgumentException) {
             out.put("code", "BAD_IMAGE");
             out.put("msg", e.getMessage());
-            return out;
-        } catch (IllegalStateException e) {
-            out.put("ok", false);
+        } else if (e instanceof IllegalStateException) {
             out.put("code", "BDA_FAIL");
             out.put("msg", e.getMessage());
-            return out;
-        } catch (Exception e) {
+        } else {
             log.error("segment 异常: {}", e.toString());
-            out.put("ok", false);
             out.put("code", "BDA_FAIL");
             out.put("msg", "服务暂时不可用，请稍后重试");
-            return out;
         }
+        return out;
+    }
+
+    /** 日志用的用户标识：只取 openid 前 8 位，绝不整串落日志 */
+    private static String userTag(String openid) {
+        return openid == null ? "anonymous" : openid.substring(0, Math.min(8, openid.length())) + "…";
     }
 
     /** JSON 数字/字符串都能吃，非法值退回默认值 */
