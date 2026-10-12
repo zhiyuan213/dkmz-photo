@@ -196,10 +196,9 @@ function drawWatermark(ctx, w, h, text) {
 
 /**
  * 在画布上完成「人像 + 底色」合成并叠加水印，返回画布（供多次按不同质量导出）
- * @param {object} src 越界补底信息 { srcW, srcH, box, origBg }
- *         box 只有顶部可能越出原图，越界区的 alpha 不信任 MODNet（对补底区域判断不稳），
- *         一律置 0（纯背景），合成时即为目标底色。
- *         origBg 为服务端回传的原背景色（可选），有则作为去色边/残影重估的基准。
+ * @param {object} src 越界补底信息 { srcW, srcH, box }；box 只有顶部可能越出
+ *        原图，越界区的 alpha 不信任 MODNet（对补底区域判断不稳），一律置 0
+ *        （纯背景），合成时即为目标底色。
  */
 function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bgHex, watermarkText, src) {
   return new Promise((resolve, reject) => {
@@ -221,20 +220,16 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
       // 再把过淡的 alpha 光环直接收掉。残影重估只在目标底比原背景暗时启用
       //（白底→白底跳过：头发/亮肤本就像「白墙混合色」，重估会误伤成银灰）。
       const bg = matting.hexToRgb(bgHex);
-      // 原背景色（去色边/残影重估的基准）：服务端 origBg > 端上采样 > 默认白。
-      // 服务端那份用抠图透明区统计，最可靠；端上采样在「合成源=云端透明底 PNG」时会
-      // 因画布预乘把 alpha≈0 的像素 RGB 抹成 0 而失真（见 decontaminateEdge 注释）。
-      const origBg = src && src.origBg && src.origBg.length >= 3 ? src.origBg : null;
 
       // 头发白霜修复的作用区（墙体泄漏区）必须在去污染**之前**、用原始数据计算：
       // 去污染会改写 alpha 与 RGB，残留的低 alpha 点会污染泛洪种子。
       // 白底场景整个跳过（与上面残影重估同一门控）——一来墙体泄漏区是整图 BFS，
       // 白底没必要跑；二来白底上「灰白」与「半透明深色」观感一致，处理只会误伤。
-      const wall = targetIsDark(alpha, person.data, alpha.length, bg, origBg)
+      const wall = targetIsDark(alpha, person.data, alpha.length, bg)
         ? computeWallMask(alpha, person.data, outW, outH)
         : null;
 
-      decontaminateEdge(alpha, person.data, outW, outH, bg, origBg);
+      decontaminateEdge(alpha, person.data, outW, outH, bg);
 
       // 头发白霜修复（深色底专用）：见 processHair 注释
       if (wall) processHair(alpha, person.data, outW, outH, wall);
@@ -297,40 +292,28 @@ function canvasFromImage(imgPath, outW, outH) {
  * 后续与目标底色的混合即完成「背景贡献 → 新底色」的置换。
  * 白底输出几乎不变（F·a + 白·(1-a) ≈ 原观测值），深色底边缘明显变净。
  */
-function decontaminateEdge(alpha, d, outW, outH, targetBg, origBg) {
+function decontaminateEdge(alpha, d, outW, outH, targetBg) {
   const n = outW * outH;
   const GHOST_DIST = 14;
   const SAT_MAX = 42;
   const ghostRow = Math.floor(outH * 0.58);
 
-  // 1) 原背景色：优先用服务端回传的 origBg（从抠图透明区统计，最可靠），
-  //    取不到才端上采样近透明像素均值，样本太少退回纯白。
-  //    ⚠️ 端上采样对「合成源 = 云端透明底 PNG」不可靠：画布按预乘 alpha 存储，
-  //    alpha≈0 的像素 RGB 会被抹成 0（实测等价于把白墙当纯黑）⇒ 残影重估整条失守。
-  let B0;
-  let B1;
-  let B2;
-  if (origBg && origBg.length >= 3) {
-    B0 = origBg[0];
-    B1 = origBg[1];
-    B2 = origBg[2];
-  } else {
-    let br = 0;
-    let bgG = 0;
-    let bb = 0;
-    let cnt = 0;
-    for (let i = 0, p = 0; i < n; i++, p += 4) {
-      if (alpha[i] < 0.03) {
-        br += d[p];
-        bgG += d[p + 1];
-        bb += d[p + 2];
-        cnt++;
-      }
+  // 1) 估计原背景色（近透明像素均值；样本太少则退回纯白）
+  let br = 0;
+  let bgG = 0;
+  let bb = 0;
+  let cnt = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    if (alpha[i] < 0.03) {
+      br += d[p];
+      bgG += d[p + 1];
+      bb += d[p + 2];
+      cnt++;
     }
-    B0 = cnt > n * 0.005 ? br / cnt : 255;
-    B1 = cnt > n * 0.005 ? bgG / cnt : 255;
-    B2 = cnt > n * 0.005 ? bb / cnt : 255;
   }
+  const B0 = cnt > n * 0.005 ? br / cnt : 255;
+  const B1 = cnt > n * 0.005 ? bgG / cnt : 255;
+  const B2 = cnt > n * 0.005 ? bb / cnt : 255;
   const LB = (B0 + B1 + B2) / 3;
   const LUM_MIN = Math.max(150, LB - 70);
 
@@ -418,29 +401,23 @@ function decontaminateEdge(alpha, d, outW, outH, targetBg, origBg) {
  * @param {Uint8ClampedArray} d RGBA 像素
  * @param {number} n 像素数
  * @param {number[]} targetBg 目标底色 [r,g,b]
- * @param {number[]} origBg 服务端回传的原背景色 [r,g,b]；有则优先，省去端上采样
  */
-function targetIsDark(alpha, d, n, targetBg, origBg) {
-  let origLuma;
-  if (origBg && origBg.length >= 3) {
-    origLuma = (origBg[0] + origBg[1] + origBg[2]) / 3;
-  } else {
-    let sr = 0;
-    let sg = 0;
-    let sb = 0;
-    let cnt = 0;
-    for (let i = 0, p = 0; i < n; i++, p += 4) {
-      if (alpha[i] < 0.03) {
-        sr += d[p];
-        sg += d[p + 1];
-        sb += d[p + 2];
-        cnt++;
-      }
+function targetIsDark(alpha, d, n, targetBg) {
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  let cnt = 0;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    if (alpha[i] < 0.03) {
+      sr += d[p];
+      sg += d[p + 1];
+      sb += d[p + 2];
+      cnt++;
     }
-    // 样本太少说明 alpha 全糊了，按「不改」处理（宁可不修，不要误修）
-    if (cnt <= n * 0.005) return false;
-    origLuma = (sr + sg + sb) / cnt / 3;
   }
+  // 样本太少说明 alpha 全糊了，按「不改」处理（宁可不修，不要误修）
+  if (cnt <= n * 0.005) return false;
+  const origLuma = (sr + sg + sb) / cnt / 3;
   const targetLuma = (targetBg[0] + targetBg[1] + targetBg[2]) / 3;
   return origLuma - targetLuma >= 40;
 }
@@ -809,28 +786,26 @@ function maskFromGrayPng(pngPath) {
 const CLOUD_UPLOAD_QUALITY_LADDER = [0.9, 0.85, 0.8, 0.72, 0.65];
 const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
 
+/** 裁剪框越出原图的顶部行数（calcCropBox 只允许顶部越界），用于告知云端强制透明 */
+function outOfSourceTopRows(box, outH) {
+  const pxY = box.height / outH;
+  return Math.min(outH, Math.max(0, Math.ceil((0 - box.top) / pxY)));
+}
+
 /**
  * 云端精修主流程。
  * cloudSegment(base64, extra) 需 resolve：
  *   - 只替换背景（alphaOnly）：{ ok:true, alpha, width, height }
- *   - 替换背景 + 美颜：{ ok:true, image(透明底 PNG，RGB 已美白), origBg?, beautyApplied }
- *   - 成品图模式（历史兼容）：{ ok:true, image, finished:true, beautyApplied? }
+ *   - 成品图模式：{ ok:true, image, finished:true, beautyApplied? }
+ *   - 兼容模式：{ ok:true, image(透明底 PNG), origBg?, beautyApplied? }
  * reject / ok:false 一律视为失败（由上层回退端上抠图）。
  *
- * 职责分工（见《JS与Java职责对照说明》）：Java 只做「把人变好看」——抠图 / 皮肤 mask /
- * 美白磨皮；换底合成是纯像素运算，一律在端上完成（省钱，且用户切底色不必再调云端）。
- * 因此美颜态请求**不再带 bgHex**：后端回「RGB 已美白 + alpha」的透明底 PNG，
- * 端上把它当作合成源（cloudSrcPath），而不是只取 alpha 去混本地未美白的图
- * ——后者正是《BDA美颜-修改记录》P1「美白结果被丢弃」那个致命数据流问题。
- *
- * @param {object} req { imgPath, box, outW, outH, alphaOnly, beautyLevel }
- *        注：不接收 bgHex —— 换底由端上完成，后端不再铺底（成品图模式仅历史兼容保留）。
- * @returns {Promise<{finishedPath?:string, cloudSrcPath?:string, mask?:Float32Array,
- *                    maskWidth?:number, maskHeight?:number, beautyApplied:boolean,
- *                    alphaOnly?:boolean}>}
+ * @param {object} req { imgPath, box, outW, outH, bgHex, outTop, alphaOnly }
+ * @returns {Promise<{finishedPath?:string, mask?:Float32Array, maskWidth?:number,
+ *                    maskHeight?:number, beautyApplied:boolean, alphaOnly?:boolean}>}
  */
 function cloudMatting(req, cloudSegment) {
-  const { imgPath, box, outW, outH, alphaOnly, beautyLevel } = req;
+  const { imgPath, box, outW, outH, bgHex, outTop, alphaOnly } = req;
   const shoot = (i) => {
     const q = CLOUD_UPLOAD_QUALITY_LADDER[i];
     return cropAndScale(imgPath, box, outW, outH, q)
@@ -842,14 +817,7 @@ function cloudMatting(req, cloudSegment) {
       });
   };
   return shoot(0)
-    .then((b64) => cloudSegment(
-      b64,
-      alphaOnly
-        ? { alphaOnly: true }
-        // 美颜态只报档位，**绝不传 bgHex**：传了后端就走历史「成品图模式」把底色也铺了，
-        // 端上就没法自己换底（也拿不到「已美白的像素」），违背职责分工。
-        : { level: beautyLevel }
-    ))
+    .then((b64) => cloudSegment(b64, alphaOnly ? { alphaOnly: true } : { bgHex, outTop }))
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {
         throw new Error((res && res.msg) || '云端精修不可用');
@@ -868,13 +836,10 @@ function cloudMatting(req, cloudSegment) {
           beautyApplied,
         }));
       }
-      // 替换背景 + 美颜：透明底 PNG 的 RGB 是云端美白后的像素，alpha 是分割蒙版。
-      // 两者都取自同一个云端结果 ⇒ 美白真正进得了成片（P1），换底仍在端上（职责分工）。
-      return base64ToTempFile(res.image, 'png').then((p) =>
-        maskFromPng(p).then((m) =>
-          Object.assign(m, { beautyApplied, cloudSrcPath: p, origBg: res.origBg || null })
-        )
-      );
+      // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
+      return base64ToTempFile(res.image, 'png')
+        .then(maskFromPng)
+        .then((m) => Object.assign(m, { beautyApplied }));
     });
 }
 
@@ -899,13 +864,11 @@ function localMatting(croppedPath, session, shortEdge) {
  *   session       已加载的推理会话（matting.createSession 产物）
  *   shortEdge     推理短边，默认 384
  *   watermark     水印文字；传空串则不加水印（付费高清版）
- *   cloudSegment  可选，云端精修：(上传图 base64, {alphaOnly?, level?, bgHex?, outTop}) =>
+ *   cloudSegment  可选，云端精修：(上传图 base64, {alphaOnly?, bgHex?, outTop}) =>
  *                 Promise<{ok, alpha?|image?, finished?, beautyApplied?}>；
  *                 失败/未开通自动回退端上 MODNet
  *   alphaOnly     可选，true = 只替换背景（不美颜）：云端只回 alpha 灰度图，
  *                 端上用本地裁剪图换底（省流量、不经有损 JPEG）
- *   beautyLevel   可选，美颜档位 id / normal / portrait（默认 id = 办证档，见
- *                 《BDA美颜-修改记录》分档建议：护照/签证/考试报名一律走最保守档）
  *   onStep        (step, info) 进度回调：face / crop / matting / compose / size
  * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo/mattingMode）
  */
@@ -948,8 +911,6 @@ function makeIdPhoto(opts) {
             // 只替换背景：云端只回 alpha，换底在端上完成（流量 10~30KB 级）
             metrics.push({ k: '云端回传', v: 'alpha 灰度图（端上换底）' });
           } else {
-            // 替换背景 + 美颜：云端回「RGB 已美白 + alpha」透明底，换底仍在端上
-            metrics.push({ k: '云端回传', v: '透明底 PNG · 像素已美白（端上换底）' });
             metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : '未生效' });
           }
         }
@@ -960,9 +921,7 @@ function makeIdPhoto(opts) {
           mask: r.mask,
           maskWidth: r.maskWidth,
           maskHeight: r.maskHeight,
-          finishedPath: r.finishedPath,   // 云端成品图（历史兼容；有则不再走端上换底）
-          cloudSrcPath: r.cloudSrcPath,   // 云端透明底 PNG（已美白）：端上换底的像素源
-          origBg: r.origBg,               // 服务端回传的原背景色（换底基准，优先于端上采样）
+          finishedPath: r.finishedPath,   // 云端成品图（有则不再走端上换底）
           mattingMs: ms,
           mattingMode: mode,
         };
@@ -978,10 +937,10 @@ function makeIdPhoto(opts) {
           box,
           outW,
           outH,
-          // 只替换背景（不美颜）⇒ 只要 alpha；美颜 ⇒ 要「RGB 已美白 + alpha」的透明底 PNG。
-          // 两种模式都由端上换底，故不传底色给后端（见 cloudMatting 注释）。
+          bgHex: o.bgHex || '#FFFFFF',
+          outTop: outOfSourceTopRows(box, outH),
+          // 只替换背景（不美颜）⇒ 只要 alpha，端上换底；美颜则走后端成品图模式
           alphaOnly: !!o.alphaOnly,
-          beautyLevel: o.beautyLevel || 'id',
         },
         o.cloudSegment
       )
@@ -1012,8 +971,7 @@ function makeIdPhoto(opts) {
         });
       }
       return buildComposite(
-        // 美颜态用云端回传的透明底 PNG 当像素源（RGB 已美白）；只替换背景态用本地裁剪图
-        ctx0.cloudSrcPath || ctx0.croppedPath,
+        ctx0.croppedPath,
         ctx0.mask,
         ctx0.maskWidth,
         ctx0.maskHeight,
@@ -1026,11 +984,9 @@ function makeIdPhoto(opts) {
           srcH: ctx0.fd.origH,
           box: ctx0.box,
           face: ctx0.fd.face,
-          origBg: ctx0.origBg || null,   // 服务端回传的原背景色（优先于端上采样）
         }
       ).then((canvas) => {
-        removeTempFile(ctx0.cloudSrcPath);
-        metrics.push({ k: '换底合成', v: `${Date.now() - t2} ms（端上）` });
+        metrics.push({ k: '换底合成', v: `${Date.now() - t2} ms` });
         return Object.assign(ctx0, { canvas, wm });
       });
     })
