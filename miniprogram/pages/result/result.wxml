@@ -4,7 +4,7 @@
   <view class="card preview-card">
     <image class="preview" src="{{src}}" mode="aspectFit" bindtap="onPreview" />
     <view class="preview-cap">{{px}} · {{kb}}KB · {{bgName}}</view>
-    <view class="watermark-tip">预览版含水印 · 保存消耗 1 次额度，解锁高清无水印</view>
+    <view class="watermark-tip" wx:if="{{!reviewMode}}">预览版含水印 · 保存消耗 1 次额度，解锁高清无水印</view>
   </view>
 
   <!-- 规格校验 -->

@@ -1,4 +1,5 @@
 const api = require('../../utils/api.js');
+const { REVIEW_MODE } = require('../../utils/config.js');
 
 /** 订单状态 → 展示文案（后端状态机：INIT 未支付 / DELIVERED 已到账 / REFUNDED 已退款） */
 const STATUS_TEXT = {
@@ -15,9 +16,15 @@ Page({
     entitlement: null,
     cloudEnabled: true,
     error: '',
+    reviewMode: REVIEW_MODE,
   },
 
   onLoad() {
+    // 备案模式：页面只渲染中性空态，不请求订单/权益数据
+    if (REVIEW_MODE) {
+      this.setData({ loading: false });
+      return;
+    }
     this.setData({ cloudEnabled: api.isCloudEnabled() });
     if (!api.isCloudEnabled()) {
       this.setData({ loading: false, error: '云端服务未配置' });
@@ -28,12 +35,16 @@ Page({
 
   onShow() {
     // 从支付页返回后刷新（支付状态可能已变更）
-    if (api.isCloudEnabled() && !this.data.loading) {
+    if (!REVIEW_MODE && api.isCloudEnabled() && !this.data.loading) {
       this.loadAll();
     }
   },
 
   onPullDownRefresh() {
+    if (REVIEW_MODE) {
+      wx.stopPullDownRefresh();
+      return;
+    }
     this.loadAll().then(() => wx.stopPullDownRefresh());
   },
 

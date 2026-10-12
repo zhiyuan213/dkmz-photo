@@ -1,4 +1,15 @@
 <view class="page">
+
+  <!-- 备案模式：不展示权益 / 金额 / 购买入口，仅中性空态 -->
+  <block wx:if="{{reviewMode}}">
+    <view class="card empty">
+      <view class="empty-title">暂无记录</view>
+    </view>
+    <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+  </block>
+
+  <block wx:else>
+
   <!-- 权益概览 -->
   <view class="card ent-card" wx:if="{{entitlement}}">
     <view class="ent-row">
@@ -63,4 +74,6 @@
 
   <button class="btn ghost back" bindtap="onGoBuy" wx:if="{{cloudEnabled}}">购买高清导出 / 会员</button>
   <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+
+  </block>
 </view>

@@ -1,5 +1,6 @@
 const specs = require('../../utils/specs');
 const api = require('../../utils/api.js');
+const { REVIEW_MODE } = require('../../utils/config.js');
 
 const RESULT_KEY = 'dkmz_last_result';
 
@@ -23,6 +24,7 @@ Page({
     meta: specs.META,
     saving: false,
     saved: false,
+    reviewMode: REVIEW_MODE,
   },
 
   onLoad() {
@@ -60,7 +62,8 @@ Page({
       exam,
       bgName: bg.name,
       // 展示带水印预览版；高清无水印版在保存校验通过后给出
-      src: r.previewPath || r.path,
+      // （备案模式不做权益校验，直接展示高清无水印图）
+      src: REVIEW_MODE ? r.path || r.previewPath : r.previewPath || r.path,
       kb: r.kb,
       px: `${r.px[0]}×${r.px[1]}`,
       quality: Math.round(r.quality * 100),
@@ -89,6 +92,11 @@ Page({
     const previewPath = r.previewPath || r.path;
     const cleanPath = r.path;
     const save = (p) => this.saveToAlbum(p || previewPath);
+    // 备案模式：不校验权益、不消耗额度，直接保存高清无水印图
+    if (REVIEW_MODE) {
+      save(cleanPath);
+      return;
+    }
     if (!api.isCloudEnabled()) {
       console.log('[photo][result] 云端未启用，跳过权益校验直接保存预览版');
       save();

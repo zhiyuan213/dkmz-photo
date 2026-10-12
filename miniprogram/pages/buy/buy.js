@@ -1,5 +1,6 @@
 const api = require('../../utils/api.js');
 const buy = require('../../utils/buy.js');
+const { REVIEW_MODE } = require('../../utils/config.js');
 
 /** 商品卡辅助文案：会员显示天数，张数包显示张数 */
 function benefitText(g) {
@@ -16,9 +17,15 @@ Page({
     cloudEnabled: true,
     error: '',
     paying: false,
+    reviewMode: REVIEW_MODE,
   },
 
   onLoad() {
+    // 备案模式：深链进入也只显示占位，不拉商品/权益、不出现任何价格
+    if (REVIEW_MODE) {
+      this.setData({ loading: false });
+      return;
+    }
     this.setData({ cloudEnabled: api.isCloudEnabled() });
     if (!api.isCloudEnabled()) {
       this.setData({ loading: false, error: '云端服务未配置，暂时无法购买' });
@@ -29,12 +36,16 @@ Page({
 
   onShow() {
     // 从订单页 / 支付收银台返回后刷新权益
-    if (api.isCloudEnabled() && !this.data.loading) {
+    if (!REVIEW_MODE && api.isCloudEnabled() && !this.data.loading) {
       this.load();
     }
   },
 
   onPullDownRefresh() {
+    if (REVIEW_MODE) {
+      wx.stopPullDownRefresh();
+      return;
+    }
     this.load().then(() => wx.stopPullDownRefresh());
   },
 

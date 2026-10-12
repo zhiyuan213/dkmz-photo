@@ -1,4 +1,5 @@
 const specs = require('../../utils/specs');
+const { REVIEW_MODE } = require('../../utils/config.js');
 
 Page({
   data: {
@@ -7,6 +8,8 @@ Page({
     meta: specs.META,
     specSource: specs.sourceInfo().sourceText,
     bannerOk: true,
+    // 备案模式：隐藏订单/权益入口与开发用自检入口
+    reviewMode: REVIEW_MODE,
   },
 
   /** 头图横幅加载失败 → 回退文字版头（本地包内资源一般不会失败，防御性兜底） */

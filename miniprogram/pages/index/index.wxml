@@ -51,7 +51,7 @@
   <view class="footer">
     <view class="footer-meta">{{specSource}} v{{meta.version}} · 更新于 {{meta.updatedAt}}</view>
     <view class="footer-disclaimer">{{meta.disclaimer}}</view>
-    <view class="footer-orders" bindtap="onOpenOrders">
+    <view class="footer-orders" wx:if="{{!reviewMode}}" bindtap="onOpenOrders">
       <text>我的订单与权益</text>
       <text class="footer-orders-arrow">›</text>
     </view>
@@ -62,7 +62,7 @@
       <text class="footer-link-sep">·</text>
       <text class="footer-link" bindtap="onOpenAgreement">用户协议</text>
     </view>
-    <view class="footer-lab" bindtap="onOpenLab">端上引擎自检（开发用）›</view>
+    <view class="footer-lab" wx:if="{{!reviewMode}}" bindtap="onOpenLab">端上引擎自检（开发用）›</view>
   </view>
 
 </view>

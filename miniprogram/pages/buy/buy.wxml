@@ -1,4 +1,16 @@
 <view class="page">
+
+  <!-- 备案模式：只显示占位，不出现任何商品/价格/会员信息 -->
+  <block wx:if="{{reviewMode}}">
+    <view class="card empty">
+      <view class="empty-title">功能调整中</view>
+      <view class="empty-desc">该功能正在升级维护，请稍后再来。</view>
+    </view>
+    <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+  </block>
+
+  <block wx:else>
+
   <!-- 权益概览 -->
   <view class="card ent-card" wx:if="{{entitlement}}">
     <view class="ent-line">
@@ -54,4 +66,6 @@
 
   <button class="btn ghost back" bindtap="onGoOrders">我的订单</button>
   <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+
+  </block>
 </view>
