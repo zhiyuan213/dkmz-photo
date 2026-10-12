@@ -5,6 +5,17 @@ const api = require('../../utils/api');
 
 const RESULT_KEY = 'dkmz_last_result';
 
+/**
+ * 美颜档位：本小程序全部模板都是「考试报名 / 办证」用途 ⇒ 一律走最保守的**办证档 id**。
+ *
+ * 依据《BDA美颜-修改记录》的分档建议：办证档（护照/签证/考试报名）用自研这套 level=id，
+ * 形象档（简历/工牌/头像）才需要更强的效果（那属于 BeautifyPic 另一条链路）。
+ * id 档 = whiten 0.15 / smooth 0.20，皮肤区实测平均提亮 ≈ +1.4~4.6/255（约 1.8%），
+ * 肉眼是「气色好一点」而不是「变白」——这正是合规证件照该有的剂量。
+ * 想调档只改这一行：'id' | 'normal' | 'portrait'（越往后越明显，也越接近失真红线）。
+ */
+const BEAUTY_LEVEL = 'id';
+
 const STEPS = [
   { key: 'crop', label: '人脸检测 · 智能裁剪' },
   { key: 'matting', label: '抠图' },
@@ -220,6 +231,8 @@ Page({
         cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, aiOn, extra) : null,
         // 只替换背景（AI 精修关闭）⇒ 云端只回 alpha，端上用本地图换底
         alphaOnly: !aiOn,
+        // 美颜档位（仅 AI 精修打开时生效）：办证档 id
+        beautyLevel: BEAUTY_LEVEL,
         onStep: (key) => {
           this.data.steps.forEach((s) => {
             if (s.state === 'doing') this.setStep(s.key, 'done');

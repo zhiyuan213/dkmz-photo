@@ -178,20 +178,23 @@ function consumeExport(clientNo, specId, specOk) {
 /**
  * 云端精修：上传裁剪图 base64。
  *
- * 两种出口，由 extra.alphaOnly 决定：
+ * 两种出口，由 extra.alphaOnly 决定（职责分工见《JS与Java职责对照说明》：
+ * Java 只做「把人变好看」，换底一律在端上完成）：
  *  - extra.alphaOnly=true（只替换背景，不美颜）：后端只回 alpha 灰度 PNG
  *    （{ok, alpha, width, height}，约 10~30KB），端上用本地裁剪图 + alpha
  *    自己换底。不传 bgHex —— 因为不需要后端换底，也不需要它回 RGB。
- *  - 否则传 bgHex 走「成品图模式」：后端连换底（+可选美肤）一次做完，
- *    返回不透明 JPEG（finished=true），端上直接拿它加水印/导出。
- *    （只传 image 不带 bgHex 时才回透明底 PNG，老版本后端兼容路径。）
+ *  - 否则（替换背景 + 美颜）：不传 bgHex，后端回「RGB 已美白 + alpha」的透明底 PNG
+ *    + origBg，端上把它当像素源自己换底 ⇒ 美白真正进成片，且用户切底色无需再调云端。
+ *  - 历史兼容：extra.bgHex 存在时走「成品图模式」（后端连换底一起做完回不透明 JPEG）。
+ *    新链路已不再使用，仅保留给旧版本端。
  *
  * @param {string} imageBase64 裁剪图 base64（与输出同尺寸）
  * @param {boolean} beautify 是否同时做保守美肤（肤色提亮+磨皮，作用区域=面部皮肤 mask）；
  *                           需后端 BDAB_BEAUTY_ENABLED=true，否则后端忽略并只抠图
- * @param {object} extra {alphaOnly, bgHex, outTop}
+ * @param {object} extra {alphaOnly, level, bgHex, outTop}
  *        alphaOnly：只替换背景（不美颜）时的 alpha-only 出口
- *        bgHex：目标底色 / outTop：裁剪框越出原图的顶部行数
+ *        level：美颜档位 id（办证档，最保守）/ normal（均衡档）/ portrait（形象档）
+ *        bgHex / outTop：仅成品图模式（历史兼容）使用
  * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
  */
 function cloudSegment(imageBase64, beautify = false, extra = null) {
@@ -200,11 +203,15 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
   const body = { image: imageBase64, beauty: alphaOnly ? false : !!beautify };
   if (alphaOnly) {
     body.alphaOnly = true;
-  } else if (extra && extra.bgHex) {
-    body.bgHex = extra.bgHex;
-    body.outTop = extra.outTop || 0;
+  } else {
+    if (extra && extra.level) body.level = extra.level;
+    // 成品图模式（历史兼容）：新链路不再传 bgHex，换底由端上完成
+    if (extra && extra.bgHex) {
+      body.bgHex = extra.bgHex;
+      body.outTop = extra.outTop || 0;
+    }
   }
-  // 抠图(+美肤需要两次 BDA 调用，再加换底合成)+大图上传比普通接口慢，放宽到 25s
+  // 抠图(+美肤需要两次 BDA 调用)+大图上传比普通接口慢，放宽到 25s
   return call('/api/photo/segment', 'POST', body, 25000);
 }
 

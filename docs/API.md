@@ -160,28 +160,45 @@ body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
 
 ## 三B、云端精修（腾讯云 BDA 人像分割）
 
+> 职责分工（见根目录《JS与Java职责对照说明》）：**Java 只负责「把人变好看」**
+> （抠图 / 皮肤 mask / 美白磨皮），**换底合成一律在小程序端做**（纯像素运算，
+> 零成本；用户切底色也不必再调云端）。所以后端**从不返回已铺好底色的成品图**（历史兼容分支除外）。
+
 ### POST /api/photo/segment
-body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 
-- `image`：base64 ≤5M，分辨率 <2000×2000（超限服务端自动压缩到长边 1920）
-- `beauty`：可选，`true` 时先做保守美肤（肤色提亮+磨皮，作用区域 = 自定义分割
-  `SegmentCustomizedPortraitPic` 的 **Face-only** mask，不含五官/头发）再抠图；
-  需后端 `BDAB_BEAUTY_ENABLED=true`，美肤失败自动退化为纯抠图，不阻断
+前端「AI 精修」开关（默认关闭）对应两个出口：
+
+| 功能 | 请求 | 响应 |
+|---|---|---|
+| **替换背景**（AI 精修关） | `{ "image": "<base64>", "beauty": false, "alphaOnly": true }` | `{ ok, alpha:"<8位灰度PNG，灰度=alpha>", width, height, beautyApplied:false, costMs }` |
+| **替换背景 + 美颜**（AI 精修开） | `{ "image": "<base64>", "beauty": true, "level": "id" }` | `{ ok, image:"<透明底PNG，RGB已美白+alpha>", origBg:[r,g,b], beautyApplied, costMs }` |
+| ~~成品图模式~~（历史兼容） | `+ "bgHex": "#FFFFFF", "outTop": 12` | `{ ok, image:"<不透明JPEG>", finished:true, ... }` |
+
+- `image`：端上先裁成与输出**同尺寸同构图**的 480×640（P2：不要把长边 512 等比缩的图传上来，
+  否则 alpha 与高清图构图不一致会整体偏移），JPEG base64 ≤90KB（`callContainer` 请求包上限）
+- `alphaOnly`：优先级最高。只调 1 次 BDA、不做美肤不换底 ⇒ 响应 10~30KB（比透明底 RGBA 的 200~400KB 低一个数量级）
+- `beauty`：`true` 时先做保守美肤（作用区域 = `SegmentCustomizedPortraitPic` 的 Face-only mask，
+  不含五官/头发）再抠图；需 `BDAB_BEAUTY_ENABLED=true`，美肤失败自动退化为纯抠图，不阻断
+- `level`：美肤档位 `id`（办证档，0.15/0.20，最保守）/ `normal`（均衡档 0.25/0.30）/
+  `portrait`（形象档 0.35/0.40）；不传用 `BDAB_BEAUTY_LEVEL`。
+  分档依据《BDA美颜-修改记录》：护照/签证/**考试报名**一律走 `id`
 - ⚠️ 美肤必须在**抠图前**做（作用于 RGB 原图）：透明底 PNG 进 Java ImageIO
-  会被铺黑且丢失 alpha，参考实现里「先抠图再美肤」的 `/process` 顺序有此 bug，已规避
-
-返回：
-- 成功 `{ ok:true, image:"<透明底PNG base64>", beautyApplied:bool, costMs }`
-- 未开通 `{ ok:false, code:"BDA_DISABLED", msg }`
-- 失败 `{ ok:false, code:"BAD_REQUEST"|"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
+  会被铺黑且丢失 alpha
+- ⚠️ 端上把透明底 PNG 画到画布后，`alpha≈0` 的像素 RGB 会被**预乘**抹成 0 ⇒
+  端上自己采样原背景色会失真（实测墙色 RGB(234,217,205) 被采成 RGB(2,2,2)），
+  深底白霜修复门控直接失守 ⇒ **`origBg` 是端上换底的必要输入**，不是可选优化
+- 失败 `{ ok:false, code:"BDA_DISABLED"|"BAD_REQUEST"|"BAD_IMAGE"|"BDA_FAIL", msg }`
 
 可靠性：偶发 `ServerError/RequestTimeout/UnKnowError` 自动重试 1 次；
 SDK 错误码已翻译成中文（分辨率超限/无人脸/欠费等可直接 toast）。
 日志严禁打印图片 base64（SDK 日志级别已收敛到 WARN）。
 
-调用 `SegmentPortraitPic`（Scene=GEN，RspImgType=base64）。前端在用户开启
-「云端精修」时调用，拿到透明底 PNG 后在端上重建 alpha 继续换底合成；
-**任何失败一律回退端上 MODNet 抠图**，出片不中断。
+调用 `SegmentPortraitPic`（Scene=GEN，RspImgType=base64）。**任何失败一律回退端上 MODNet 抠图**，出片不中断。
+
+### POST /idphoto/process（公网直连，完整版端契约）
+
+body `{ "image", "level": "id|portrait", "acne": false }` → `{ image:"<透明底PNG>", origBg, beautyApplied, costMs }`，
+失败回 `{ message }`（HTTP 仍 200）。安全：默认无鉴权，上线前必须配 `PHOTO_API_TOKEN` 并校验请求头 `X-Photo-Token`。
 
 环境变量（不配置 = 功能关闭，不影响其他接口）：
 
@@ -192,9 +209,10 @@ SDK 错误码已翻译成中文（分辨率超限/无人脸/欠费等可直接 t
 | `BDAB_REGION` | 仅 `ap-beijing` / `ap-guangzhou` / `ap-shanghai`，默认广州 |
 | `BDAB_ENDPOINT` | 可选。云托管容器直连 https 报 PKIX 时，试 `bda.internal.tencentcloudapi.com`（限同地域 VPC） |
 | `BDAB_BEAUTY_ENABLED` | 美肤开关（每次美肤+抠图消耗 2 次 BDA 调用，共享免费额度） |
+| `BDAB_BEAUTY_LEVEL` | 默认美肤档位 `id`/`normal`/`portrait`（端上传了 `level` 时以端上为准） |
 
 计费：每接口每月 1000 次免费额度，超出后付费约 0.01 元/次。
-隐私：开启后照片上传腾讯云做分割，隐私政策页已披露（「云端精修」条目）。
+隐私：照片会上传腾讯云做人像分割（两种模式都会上传），隐私政策页已披露（「AI 精修」条目）。
 
 ---
 
