@@ -53,13 +53,35 @@ public class SkinBeautyService {
     public static final double SMOOTH_ID = 0.35;
 
     /**
-     * 美肤主入口。
+     * /idphoto/process 的两档美肤剂量（端上「办证档 / 形象档」）：
+     *   id       办证档：官方对「失真」零容忍，剂量保守，宁可少不可多；
+     *   portrait 形象档：用户自用/形象照，提亮与磨皮都更明显一档。
+     * 数值与端上完整版的约定一致（括号里那两组数）：id 0.15/0.20，portrait 0.35/0.40。
+     */
+    public static final double LIFT_CERT = 15.0;
+    public static final double SMOOTH_CERT = 0.20;
+    public static final double LIFT_PORTRAIT = 35.0;
+    public static final double SMOOTH_PORTRAIT = 0.40;
+
+    /**
+     * 美肤主入口（默认剂量 = /api/photo/segment 的线上档）。
      *
      * @param imageBase64 原图 base64（RGB 图；不要传透明底图，透明通道会被铺黑）
      * @param maskBase64  皮肤区域 mask 灰度图 base64（来自 CustomSegmentService）；null 则不做美肤
      * @return 处理后的图片 base64（PNG）
      */
     public String beautify(String imageBase64, String maskBase64) {
+        return beautify(imageBase64, maskBase64, MEDIAN_LIFT, SMOOTH_ID);
+    }
+
+    /**
+     * 带剂量的美肤（/idphoto/process 的「办证档 / 形象档」走这里）。
+     *
+     * @param medianLift     皮肤亮度中位数的目标抬升量（0-255 尺度），越大越白
+     * @param smoothStrength 磨皮强度（0-1），越大越平（保边阈值不随之放大，仍防塑料脸）
+     */
+    public String beautify(String imageBase64, String maskBase64,
+                           double medianLift, double smoothStrength) {
         if (maskBase64 == null || maskBase64.isEmpty()) {
             // 没有 mask 宁可不做——全图提亮会把深色背景一起推亮
             log.info("无皮肤 mask，跳过美肤");
@@ -94,9 +116,10 @@ public class SkinBeautyService {
             log.warn("皮肤亮度中位数={} 越界，疑似 mask 判错区域，放弃美肤", (int) medianLuma);
             return stripDataUrlPrefix(imageBase64);
         }
-        whiten(work, mask, medianLuma);
-        smooth(work, mask, SMOOTH_ID);
-        log.info("美肤完成 medianY={} → +{}", (int) medianLuma, MEDIAN_LIFT);
+        whiten(work, mask, medianLuma, medianLift);
+        smooth(work, mask, smoothStrength);
+        log.info("美肤完成 medianY={} → +{} 磨皮={}", (int) medianLuma,
+                Math.round(medianLift), smoothStrength);
 
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -111,12 +134,12 @@ public class SkinBeautyService {
     // 美白（YCbCr 空间只动 Y，去黄）
     // ------------------------------------------------------------------
     private static void whiten(BufferedImage img, boolean[][] mask,
-                               double medianLuma) {
+                               double medianLuma, double lift) {
         int w = img.getWidth();
         int h = img.getHeight();
 
         // 目标锚点：当前中位数 + 可感知的抬升，上限 238（再高纸打印会过曝）
-        double target = Math.min(238.0, medianLuma + MEDIAN_LIFT);
+        double target = Math.min(238.0, medianLuma + lift);
 
         int[] rgb = new int[w * h];
         img.getRGB(0, 0, w, h, rgb, 0, w);

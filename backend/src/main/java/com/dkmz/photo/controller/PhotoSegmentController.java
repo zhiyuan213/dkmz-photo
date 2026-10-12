@@ -4,6 +4,7 @@ import com.dkmz.photo.service.BdaSegmentService;
 import com.dkmz.photo.service.CustomSegmentService;
 import com.dkmz.photo.service.PortraitCompositeService;
 import com.dkmz.photo.service.SkinBeautyService;
+import com.dkmz.photo.support.BackgroundColorEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,8 +30,16 @@ import java.util.Map;
  *
  * 返回：
  *   成品图模式（带 bgHex）：{ ok:true, image:"<不透明 JPEG base64>", finished:true, beautyApplied, costMs }
- *   兼容模式（不带 bgHex）：{ ok:true, image:"<透明底 PNG base64>", beautyApplied, costMs }
+ *   兼容模式（不带 bgHex）：{ ok:true, image:"<透明底 PNG base64>", origBg:[r,g,b], beautyApplied, costMs }
  *   失败：{ ok:false, code:"BDA_DISABLED"|"BAD_REQUEST"|"BAD_IMAGE"|"BDA_FAIL", msg }
+ *
+ * origBg = 服务端从抠图结果「透明区」统计出的原背景色，供端上换底去色边使用：
+ *   out = C + (1 - alpha) × (新底色 - 原背景色)
+ * 端上自己用原图四角采样取中位数并不可靠 —— 四角里若有两个角是深色（衣服/阴影/家具），
+ * 中位数会落在两簇之间的废值上（实测墙色 RGB(233,217,204) 被取成 RGB(147,137,130)），
+ * 去色边修正量随之整条错位，发际线/脸颊/下巴出现一圈亮色光晕，比不去色边还差。
+ * 成品图模式下后端已铺好底色，端上不需要去色边，故不返回该字段；
+ * 透明区样本不足时该字段也可能缺失，端上按自己的兜底逻辑处理即可。
  *
  * 处理顺序（beauty=true 且美肤开关开启时）：
  *   1. 自定义分割拿「面部皮肤」mask（失败则跳过美肤，不阻断）
@@ -121,6 +130,20 @@ public class PhotoSegmentController {
             out.put("ok", true);
             out.put("image", payload);
             if (wantFinished) out.put("finished", true);
+
+            // 原背景色：只有「兼容模式」（返回透明底、端上自己换底）才需要。
+            // 成品图模式下后端已铺好底色，端上不再做去色边，算它也是白算。
+            // 统计对象必须是透明底 PNG，不是成品图。
+            if (!wantFinished) {
+                BackgroundColorEstimator.Result bg = BackgroundColorEstimator.estimateDetailed(png);
+                if (bg != null) {
+                    out.put("origBg", bg.toRgb());
+                    log.info("segment origBg {}（覆盖率是透明像素占比，非图片内容）", bg);
+                } else {
+                    log.info("segment origBg 样本不足，交由端上兜底");
+                }
+            }
+
             out.put("beautyApplied", beautyApplied);
             out.put("costMs", cost);
             return out;
