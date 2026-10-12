@@ -205,10 +205,11 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
 
       // 边缘去污染（换深色底必做）：半透明边缘像素混着原背景色（常见白墙），
       // 铺红/蓝等深饱和底色时显形为灰霜。先按 alpha 反推纯人像色，
-      // 再把过淡的 alpha 光环直接收掉。
-      decontaminateEdge(alpha, person.data, outW, outH);
-
+      // 再把过淡的 alpha 光环直接收掉。残影重估只在目标底比原背景暗时启用
+      //（白底→白底跳过：头发/亮肤本就像「白墙混合色」，重估会误伤成银灰）。
       const bg = matting.hexToRgb(bgHex);
+      decontaminateEdge(alpha, person.data, outW, outH, bg);
+
       const d = person.data;
       for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
         const a = alpha[i];
@@ -267,7 +268,7 @@ function canvasFromImage(imgPath, outW, outH) {
  * 后续与目标底色的混合即完成「背景贡献 → 新底色」的置换。
  * 白底输出几乎不变（F·a + 白·(1-a) ≈ 原观测值），深色底边缘明显变净。
  */
-function decontaminateEdge(alpha, d, outW, outH) {
+function decontaminateEdge(alpha, d, outW, outH, targetBg) {
   const n = outW * outH;
   const GHOST_DIST = 14;
   const SAT_MAX = 42;
@@ -291,6 +292,13 @@ function decontaminateEdge(alpha, d, outW, outH) {
   const B2 = cnt > n * 0.005 ? bb / cnt : 255;
   const LB = (B0 + B1 + B2) / 3;
   const LUM_MIN = Math.max(150, LB - 70);
+
+  // 残影重估门控：白底→白底必须跳过（头发/亮肤像素本就低饱和偏亮，重估会把
+  // alpha 砍掉、前景反推钳制成黑 ⇒ 白底上整片银灰，10-12 真机事故）；
+  // 且白底目标下「灰白实心」与「半透明深色」观感几乎一致，跳过零损失。
+  // 红/蓝底（比白墙暗 100+ 亮度）照常启用，治头顶白霜。
+  const targetLuma = targetBg ? (targetBg[0] + targetBg[1] + targetBg[2]) / 3 : 255;
+  const ghostOn = LB - targetLuma >= 40;
 
   // 2) chamfer 距离场：0 = 确定背景（alpha<0.08），向外近似欧氏距离
   const dist = new Float32Array(n).fill(1e6);
@@ -333,7 +341,7 @@ function decontaminateEdge(alpha, d, outW, outH) {
       let w = 1 - a; // mask 证据：背景占比
 
       // 颜色证据：上半区、近背景、低饱和、亮的像素按亮度重估
-      if (inGhost && dist[i] <= GHOST_DIST) {
+      if (ghostOn && inGhost && dist[i] <= GHOST_DIST) {
         const r = d[p];
         const g = d[p + 1];
         const b = d[p + 2];

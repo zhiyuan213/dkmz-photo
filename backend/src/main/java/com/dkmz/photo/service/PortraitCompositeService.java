@@ -80,9 +80,8 @@ public class PortraitCompositeService {
             rgb[i] = c & 0xFFFFFF;
         }
 
-        decontaminate(w, h, alpha, rgb, outTopRows);
-
         int[] bg = parseHex(bgHex);
+        decontaminate(w, h, alpha, rgb, outTopRows, bg);
         int[] dst = new int[n];
         for (int i = 0; i < n; i++) {
             float a = alpha[i];
@@ -116,7 +115,7 @@ public class PortraitCompositeService {
     // ------------------------------------------------------------------
     // 边缘去污染 + 白墙残影重估（原位修改 alpha / rgb）
     // ------------------------------------------------------------------
-    private static void decontaminate(int w, int h, float[] alpha, int[] rgb, int outTopRows) {
+    private static void decontaminate(int w, int h, float[] alpha, int[] rgb, int outTopRows, int[] targetBg) {
         int n = w * h;
 
         // 0) 裁剪框越出原图的顶部行：一定是补的白底背景，强制透明
@@ -149,6 +148,14 @@ public class PortraitCompositeService {
         double lumaBg = (b0 + b1 + b2) / 3;
         double lumMin = Math.max(150, lumaBg - 70);
         double lumBase = Math.max(1, lumaBg - 70);
+
+        // 残影重估门控：只在「目标底色明显比原背景暗」时启用。
+        // 白底→白底时头发/亮肤本身就长得像「白墙混合色」，重估会把大把头发/皮肤
+        // 像素的 alpha 砍掉、前景反推被钳制成黑 ⇒ 铺白底后整片银灰（10-12 真机事故）；
+        // 而白底目标下「灰白实心」与「半透明深色」观感本就几乎一致，跳过零损失。
+        // 红/蓝底（比白墙暗 100+ 亮度）照常启用，治头顶白霜。
+        double targetLuma = (targetBg[0] + targetBg[1] + targetBg[2]) / 3.0;
+        boolean ghostOn = lumaBg - targetLuma >= 40;
 
         // 2) chamfer 距离场：0 = 确定背景（alpha<0.08），其余为到背景的近似欧氏距离
         float[] dist = new float[n];
@@ -194,7 +201,7 @@ public class PortraitCompositeService {
                 double bgRatio = 1 - a;   // mask 证据：背景占比
 
                 // 颜色证据：上半区、近背景、低饱和、偏亮的像素按亮度重估
-                if (inGhost && dist[i] <= GHOST_DIST) {
+                if (ghostOn && inGhost && dist[i] <= GHOST_DIST) {
                     int c = rgb[i];
                     int r = (c >> 16) & 0xFF;
                     int g = (c >> 8) & 0xFF;
