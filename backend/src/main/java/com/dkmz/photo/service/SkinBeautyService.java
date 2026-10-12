@@ -88,6 +88,12 @@ public class SkinBeautyService {
 
         // 1) 皮肤区亮度中位数 → 提亮锚点；2) YCbCr 提亮；3) 保边轻度磨皮
         double medianLuma = calcMaskMedianLuma(work, mask);
+        // 保险丝：皮肤亮度中位数不可能低于 60（深肤）或高于 210（近曝），
+        // 越界说明 mask 判错了区域（比如盖到了头发/背景），提亮只会帮倒忙
+        if (medianLuma < 60 || medianLuma > 210) {
+            log.warn("皮肤亮度中位数={} 越界，疑似 mask 判错区域，放弃美肤", (int) medianLuma);
+            return stripDataUrlPrefix(imageBase64);
+        }
         whiten(work, mask, medianLuma);
         smooth(work, mask, SMOOTH_ID);
         log.info("美肤完成 medianY={} → +{}", (int) medianLuma, MEDIAN_LIFT);
@@ -223,33 +229,80 @@ public class SkinBeautyService {
     // ------------------------------------------------------------------
     // 工具
     // ------------------------------------------------------------------
+    /** mask 覆盖率合理区间：脸部皮肤在证件照裁剪里一般占 8%~30%；越界视为解析失败 */
+    private static final double MASK_MIN_COVERAGE = 0.02;
+    private static final double MASK_MAX_COVERAGE = 0.45;
+
+    /**
+     * 解析皮肤 mask，对 BDA MaskImage 的三种可能编码都健壮：
+     *   ① 黑白不透明图（脸白底黑）——按亮度判；
+     *   ② 透明底图（脸不透明白、背景透明但 RGB 可能是白！）——只按亮度会把
+     *      整张图判成皮肤 ⇒ 全图提亮封顶 ⇒ 「泥巴脸+银灰头发」事故（10-12），
+     *      必须结合 alpha；
+     *   ③ 白底黑脸的反相图——按反相亮度判。
+     * 依次尝试三种判据，取第一个覆盖率落在合理区间的；全部越界则放弃美肤。
+     */
     private static boolean[][] parseMask(String maskBase64, int targetW, int targetH) {
+        BufferedImage m;
         try {
-            BufferedImage m = ImageIO.read(new ByteArrayInputStream(
+            m = ImageIO.read(new ByteArrayInputStream(
                     Base64.getDecoder().decode(stripDataUrlPrefix(maskBase64))));
-            if (m == null) return null;
-
-            if (m.getWidth() != targetW || m.getHeight() != targetH) {
-                BufferedImage scaled = new BufferedImage(targetW, targetH,
-                        BufferedImage.TYPE_INT_RGB);
-                scaled.createGraphics().drawImage(m, 0, 0, targetW, targetH, null);
-                m = scaled;
-            }
-
-            boolean[][] out = new boolean[targetH][targetW];
-            int[] px = new int[targetW * targetH];
-            m.getRGB(0, 0, targetW, targetH, px, 0, targetW);
-            for (int y = 0; y < targetH; y++) {
-                for (int x = 0; x < targetW; x++) {
-                    int c = px[y * targetW + x];
-                    int lum = (((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF)) / 3;
-                    out[y][x] = lum > 128;   // 灰度 mask：亮 = 目标区域
-                }
-            }
-            return out;
         } catch (Exception e) {
             return null;
         }
+        if (m == null) return null;
+
+        if (m.getWidth() != targetW || m.getHeight() != targetH) {
+            log.info("mask 尺寸 {}x{} 与图片 {}x{} 不一致，缩放对齐",
+                    m.getWidth(), m.getHeight(), targetW, targetH);
+            BufferedImage scaled = new BufferedImage(targetW, targetH,
+                    BufferedImage.TYPE_INT_ARGB);
+            java.awt.Graphics2D g = scaled.createGraphics();
+            g.drawImage(m, 0, 0, targetW, targetH, null);
+            g.dispose();
+            m = scaled;
+        }
+
+        int n = targetW * targetH;
+        int[] px = new int[n];
+        m.getRGB(0, 0, targetW, targetH, px, 0, targetW);
+
+        boolean[][] lumMask = new boolean[targetH][targetW];
+        boolean[][] alphaMask = new boolean[targetH][targetW];
+        boolean[][] invMask = new boolean[targetH][targetW];
+        int lumCnt = 0;
+        int alphaCnt = 0;
+        int invCnt = 0;
+        for (int i = 0, y = 0; y < targetH; y++) {
+            for (int x = 0; x < targetW; x++, i++) {
+                int c = px[i];
+                int alpha = (c >>> 24) & 0xFF;
+                int lum = (((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF)) / 3;
+                boolean lm = lum > 128;
+                boolean am = alpha > 128;
+                lumMask[y][x] = lm;
+                alphaMask[y][x] = am;
+                invMask[y][x] = !lm;
+                if (lm) lumCnt++;
+                if (am) alphaCnt++;
+                if (!lm) invCnt++;
+            }
+        }
+
+        String[] names = {"亮度", "alpha", "反相亮度"};
+        boolean[][][] masks = {lumMask, alphaMask, invMask};
+        int[] counts = {lumCnt, alphaCnt, invCnt};
+        for (int k = 0; k < 3; k++) {
+            double cov = counts[k] / (double) n;
+            String covStr = (Math.round(cov * 1000) / 10.0) + "%";
+            if (cov >= MASK_MIN_COVERAGE && cov <= MASK_MAX_COVERAGE) {
+                log.info("皮肤 mask 判据={} 覆盖率={} → 采用", names[k], covStr);
+                return masks[k];
+            }
+            log.info("皮肤 mask 判据={} 覆盖率={} 越界，弃用", names[k], covStr);
+        }
+        log.warn("皮肤 mask 三种判据覆盖率全部越界，放弃美肤");
+        return null;
     }
 
     private static double calcMaskMedianLuma(BufferedImage img, boolean[][] mask) {
