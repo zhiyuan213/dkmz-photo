@@ -38,10 +38,10 @@
     <view class="hint cloud-note">{{aiOn ? '腾讯云人像分割 + 保守肤色提亮（不改变面部特征，仅作用于面部皮肤）' : '腾讯云人像分割更精细，发丝边缘更干净'}}</view>
   </view>
 
-  <!-- 引擎状态 -->
+  <!-- 引擎状态（云端可用时仅作兜底：抠图失败自动回退端上） -->
   <view class="card">
     <view class="kv">
-      <text>端上引擎</text>
+      <text>{{cloudAvailable ? '端上兜底引擎' : '端上引擎'}}</text>
       <text class="{{modelReady ? 'ok' : modelError ? 'bad' : 'warn'}}">{{modelStateText}}</text>
     </view>
     <view class="hint" wx:if="{{modelError}}">失败原因：{{modelError}}（点击下方按钮重试）</view>
