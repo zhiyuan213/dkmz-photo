@@ -83,3 +83,35 @@ test('home uses native sharing with a valid home route', () => {
   const template = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/index/index.wxml'), 'utf8');
   assert.match(template, /open-type="share"/);
 });
+
+
+test('purchase display follows backend processing limits after refresh', async () => {
+  let daily = 30;
+  const { config } = harness(async () => ({ ok: true, reviewMode: false,
+    processingLimits: { enabled: true, perMinute: 10, per24Hours: daily } }));
+  await config.load();
+  assert.equal(config.getProcessingLimits().per24Hours, 30);
+  daily = 25;
+  await config.load(true);
+  assert.equal(config.getProcessingLimits().per24Hours, 25);
+  assert.equal(config.getProcessingLimits().perMinute, 10);
+});
+
+
+test('cloud processing obtains fresh wx.login code and does not trust caller openid', async () => {
+  let request;
+  const context = { module: { exports: {} }, console: { log() {}, warn() {} }, wx: {
+    login: ({ success }) => success({ code: 'fresh-code' }),
+    cloud: { init() {}, callContainer: (options) => {
+      request = options;
+      options.success({ data: { ok: true, image: 'result', finished: true } });
+    } },
+  } };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../miniprogram/utils/api.js'), 'utf8'), context);
+  await context.module.exports.cloudSegment('image', true, { bgHex: '#FFFFFF' });
+  assert.equal(request.data.loginCode, 'fresh-code');
+  assert.equal(request.data.beauty, true);
+  assert.equal(request.data.image, 'image');
+  assert.equal(request.data.openid, undefined);
+});

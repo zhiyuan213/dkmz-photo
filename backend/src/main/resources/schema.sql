@@ -111,3 +111,16 @@ CREATE TABLE IF NOT EXISTS photo_export (
   UNIQUE KEY uk_client_no (client_no),
   KEY idx_openid_created (openid, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='高清导出流水（含幂等键）';
+-- 制作限流：仅保存用户摘要和请求时间，不保存照片。
+CREATE TABLE IF NOT EXISTS photo_processing_guard (
+  id INT NOT NULL PRIMARY KEY
+) ENGINE=InnoDB;
+INSERT IGNORE INTO photo_processing_guard(id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS photo_processing_request (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_hash CHAR(64) NOT NULL,
+  created_at DATETIME(3) NOT NULL,
+  INDEX idx_processing_time(created_at),
+  INDEX idx_processing_user_time(user_hash, created_at)
+) ENGINE=InnoDB;

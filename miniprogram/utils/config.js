@@ -4,17 +4,23 @@ const api = require('./api');
 let reviewMode = false;
 let loaded = false;
 let pending = null;
+let processingLimits = null;
 function isReviewMode() { return reviewMode; }
+function getProcessingLimits() { return processingLimits; }
 function load(force) {
   if (pending) return pending;
   if (loaded && !force) return Promise.resolve({ reviewMode });
   pending = api.call('/api/photo/config', 'GET', {}, 8000).then((res) => {
     if (!res || res.ok !== true || typeof res.reviewMode !== 'boolean') throw new Error('服务配置返回异常');
     reviewMode = res.reviewMode;
+    const limits = res.processingLimits;
+    processingLimits = limits && typeof limits.enabled === 'boolean'
+      && typeof limits.perMinute === 'number' && typeof limits.per24Hours === 'number' ? limits : null;
     loaded = true;
-    return { reviewMode };
+    return { reviewMode, processingLimits };
   }).catch((error) => {
     reviewMode = false;
+    processingLimits = null;
     loaded = false;
     throw error;
   }).finally(() => { pending = null; });
@@ -36,7 +42,7 @@ function withConfig(page) {
         console.warn('[photo][config] 配置获取失败，使用正常权益校验', error && (error.msg || error.message));
       }).then(() => {
         if (this._configUnloaded) return;
-        this.setData({ reviewMode, configLoading: false });
+        this.setData({ reviewMode, processingLimits, configLoading: false });
         if (this._result) this.setData({ src: reviewMode ? this._result.path || this._result.previewPath
           : this._result.previewPath || this._result.path });
         if (handler) return handler.apply(this, args);
@@ -50,7 +56,7 @@ function withConfig(page) {
       if (this._configActionPending || this.data.saving || this.data.saved || this.data.paying) return;
       this._configActionPending = true;
       return load(true).then(() => {
-        this.setData({ reviewMode });
+        this.setData({ reviewMode, processingLimits });
         if (name === 'onBuy' && reviewMode) return;
         return handler.apply(this, args);
       }).catch(() => {
@@ -60,4 +66,4 @@ function withConfig(page) {
   });
   return page;
 }
-module.exports = { isReviewMode, load, withConfig };
+module.exports = { isReviewMode, getProcessingLimits, load, withConfig };

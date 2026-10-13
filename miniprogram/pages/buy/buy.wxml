@@ -35,7 +35,21 @@
   </view>
 
   <!-- 商品列表 -->
-  <block wx:elif="{{goods.length > 0}}">
+  <view class="card processing-rules" wx:if="{{!configLoading}}">
+    <view class="tip-title">云端制作与保存规则</view>
+    <view class="tip-line">会员有效期内不限保存次数；云端制作受以下频率限制，普通用户与会员均适用。</view>
+    <block wx:if="{{processingLimits && processingLimits.enabled}}">
+      <view class="rule-row" wx:if="{{processingLimits.perMinute > 0}}">每分钟最多 <text class="rule-number">{{processingLimits.perMinute}}</text> 次云端制作</view>
+      <view class="rule-row" wx:if="{{processingLimits.per24Hours > 0}}">连续 24 小时最多 <text class="rule-number">{{processingLimits.per24Hours}}</text> 次云端制作</view>
+      <view class="tip-line">按请求时间滚动统计，不在午夜统一重置；达到上限后，待较早请求满 24 小时再制作。</view>
+    </block>
+    <view class="tip-line" wx:elif="{{processingLimits && !processingLimits.enabled}}">当前未启用云端制作频率限制。</view>
+    <view class="tip-line" wx:else>制作频率限制以服务端提示为准。</view>
+    <view class="tip-line">重新制作、换底等云端制作请求会计入次数，缓存命中也计入。直接保存已生成的照片不计入云端制作次数。</view>
+    <view class="tip-line">达到云端制作上限时，已有照片仍可按账户权益保存；暂时无法使用云端美肤。</view>
+  </view>
+
+  <block wx:if="{{cloudEnabled && !loading && !error && goods.length > 0}}">
     <view class="section-title">选择解锁方式</view>
 
     <view class="card goods {{item.vip ? 'goods-vip' : ''}}" wx:for="{{goods}}" wx:key="goodsId">
@@ -59,7 +73,7 @@
     <view class="card tip-card">
       <view class="tip-title">购买须知</view>
       <view class="tip-line">· 高清无水印：去掉预览图上的「登科喵证件照」水印，可直接用于报名打印。</view>
-      <view class="tip-line">· 会员有效期内不限张数；张数包按导出张数消耗，制作永远免费。</view>
+      <view class="tip-line">· 会员有效期内不限保存次数；张数包按导出次数消耗。制作免费，但云端制作受上述频率限制。</view>
       <view class="tip-line">· 支付由微信虚拟支付完成，订单可在下方「我的订单」中查询。</view>
     </view>
   </block>

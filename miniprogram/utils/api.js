@@ -72,7 +72,9 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
-            console.log('[photo][api]', path, '->', JSON.stringify(body).slice(0, 300));
+            console.log('[photo][api]', path, '->', JSON.stringify(path === '/api/photo/segment'
+              ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
+              : body).slice(0, 300));
             resolve(body);
           } else {
             reject({ code: 'BAD_RESPONSE', msg: '响应格式异常', raw: body });
@@ -94,7 +96,9 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
-            console.log('[photo][api]', path, '->', JSON.stringify(body).slice(0, 300));
+            console.log('[photo][api]', path, '->', JSON.stringify(path === '/api/photo/segment'
+              ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
+              : body).slice(0, 300));
             resolve(body);
           } else {
             reject({ code: 'BAD_RESPONSE', msg: '响应格式异常', raw: body });
@@ -205,7 +209,15 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
     body.outTop = extra.outTop || 0;
   }
   // 抠图(+美肤需要两次 BDA 调用，再加换底合成)+大图上传比普通接口慢，放宽到 25s
-  return call('/api/photo/segment', 'POST', body, 25000);
+  return new Promise((resolve, reject) => {
+    wx.login({
+      success: (res) => res && res.code ? resolve(res.code) : reject({ msg: '获取登录凭证失败，请重试' }),
+      fail: () => reject({ msg: '登录失败，请稍后重试' }),
+    });
+  }).then((code) => {
+    body.loginCode = code;
+    return call('/api/photo/segment', 'POST', body, 35000);
+  });
 }
 
 // ============================================================

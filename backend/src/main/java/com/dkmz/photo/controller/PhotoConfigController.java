@@ -4,18 +4,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
+import com.dkmz.photo.support.SegmentRateLimiter;
 
 /** 仅下发公开产品开关，不返回支付或腾讯云凭据。 */
 @RestController
 public class PhotoConfigController {
     private final boolean reviewMode;
+    private final SegmentRateLimiter limiter;
 
-    public PhotoConfigController(@Value("${photo.review-mode:false}") boolean reviewMode) {
+    public PhotoConfigController(@Value("${photo.review-mode:false}") boolean reviewMode, SegmentRateLimiter limiter) {
         this.reviewMode = reviewMode;
+        this.limiter = limiter;
     }
 
     @GetMapping("/api/photo/config")
     public Map<String, Object> config() {
-        return Map.of("ok", true, "reviewMode", reviewMode);
+        return Map.of("ok", true, "reviewMode", reviewMode, "processingLimits", limiter.rules());
     }
 }

@@ -15,7 +15,7 @@
     <view class="ent-row">
       <view class="ent-item">
         <view class="ent-num">{{entitlement.vipActive ? '会员' : entitlement.remaining}}</view>
-        <view class="ent-label">{{entitlement.vipActive ? '不限张数' : '可用高清导出'}}</view>
+        <view class="ent-label">{{entitlement.vipActive ? '不限保存次数' : '可用高清导出'}}</view>
       </view>
       <view class="ent-item">
         <view class="ent-num">{{entitlement.freeQuota}}</view>

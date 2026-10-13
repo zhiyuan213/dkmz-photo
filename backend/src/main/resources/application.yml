@@ -96,21 +96,18 @@ photo:
     # 美肤档位：id（办证档，最保守）/ normal（均衡档，默认）/ portrait（形象档，可见变化）
     beauty-level: ${BDAB_BEAUTY_LEVEL:normal}
   # ------------------------------------------------------------
-  # /api/photo/segment 防刷限流（内存滑动窗口，单实例精确；多实例≈限额×实例数）
-  # 该接口直接烧 BDA 计费额度（美颜态 1 次请求 = 2 次调用，免费 1000 次/月/接口，
-  # 超出 ≈0.01 元/次），公网域名裸奔等于把钱包挂在外网，必须限流。
-  # 真实用户做一张图只发 1 次请求，以下限额远高于正常用量：
-  #   per-user-minute=6 / per-user-day=60（≈每天 30 张照片）
-  #   global-minute=30 / global-day=900（≈每天 450 张，≈15 元 BDA 上限）
-  # 阈值 ≤0 = 该档不限制。彻底防刷请配合关闭云托管「公网访问」开关。
-  # ------------------------------------------------------------
+  # 两个制作接口共享 MySQL 限流，按连续 60 秒 / 24 小时统计。
+  # 所有用户（包括会员）都适用；会员不限已有照片的保存次数。
   segment:
+    cache:
+      ttl-seconds: ${SEGMENT_CACHE_TTL_SECONDS:600}
+      max-bytes: ${SEGMENT_CACHE_MAX_BYTES:33554432}
     rate:
       enabled: ${SEGMENT_RATE_ENABLED:true}
       global-minute: ${SEGMENT_RATE_GLOBAL_MINUTE:30}
       global-day: ${SEGMENT_RATE_GLOBAL_DAY:900}
-      per-user-minute: ${SEGMENT_RATE_USER_MINUTE:6}
-      per-user-day: ${SEGMENT_RATE_USER_DAY:60}
+      per-user-minute: ${SEGMENT_RATE_USER_MINUTE:10}
+      per-user-day: ${SEGMENT_RATE_USER_DAY:30}
 
 # SDK 日志收敛：DEBUG 级可能把请求体（含图片 base64）打进日志，人脸数据严禁落日志
 logging:

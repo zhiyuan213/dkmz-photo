@@ -4,7 +4,7 @@ const config = require('../../utils/config.js');
 
 /** 商品卡辅助文案：会员显示天数，张数包显示张数 */
 function benefitText(g) {
-  if (g.vipDays > 0) return `${g.vipDays} 天不限张数导出`;
+  if (g.vipDays > 0) return `${g.vipDays} 天不限保存次数，云端制作有频率限制`;
   if (g.quota > 0) return `${g.quota} 张高清无水印导出`;
   return '—';
 }
