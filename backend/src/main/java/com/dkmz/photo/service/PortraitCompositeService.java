@@ -38,6 +38,11 @@ public class PortraitCompositeService {
      * @return 成品 JPEG 的 base64（不透明，保留原有软边缘）
      */
     public String composite(String pngBase64, String bgHex, int outTopRows) {
+        return composite(pngBase64, bgHex, outTopRows, null);
+    }
+
+    /** 原图必须是实际送入分割的图（美肤启用时传美肤后的图）。 */
+    public String composite(String pngBase64, String bgHex, int outTopRows, String originalBase64) {
         BufferedImage src = decode(pngBase64);
         int w = src.getWidth();
         int h = src.getHeight();
@@ -60,6 +65,15 @@ public class PortraitCompositeService {
         // 只有原图之外的补白行可以确定为背景；不按亮度猜测人体透明度。
         int top = Math.max(0, Math.min(h, outTopRows));
         java.util.Arrays.fill(alpha, 0, top * w, 0f);
+        if ((bg[0] + bg[1] + bg[2]) / 3.0 < 200
+                && originalBase64 != null && !originalBase64.isBlank()) {
+            BufferedImage original = decode(originalBase64);
+            // 不猜测不同尺寸的坐标映射，尺寸不匹配时保留原结果。
+            if (original.getWidth() == w && original.getHeight() == h) {
+                cleanHairEdge(w, h, alpha, rgb,
+                        original.getRGB(0, 0, w, h, null, 0, w), top);
+            }
+        }
         int[] dst = new int[n];
         for (int i = 0; i < n; i++) {
             float a = alpha[i];
@@ -88,6 +102,67 @@ public class PortraitCompositeService {
         String jpeg = encodeJpeg(out, JPEG_QUALITY);
         log.info("成品合成 ok {}x{} 输出 {}KB", w, h, jpeg.length() / 1024);
         return jpeg;
+    }
+
+    /** 只净化头顶软边缘的 RGB；不削 alpha、不改实心发丝和五官。 */
+    static void cleanHairEdge(int w, int h, float[] alpha, int[] rgb, int[] original, int paddedTop) {
+        int radius = Math.max(2, Math.min(12, Math.round(Math.max(w, h) / 160f)));
+        int first = h;
+        for (int y = paddedTop; y < h && first == h; y++) {
+            for (int x = 0; x < w; x++) if (alpha[y * w + x] > 0.98f) { first = y; break; }
+        }
+        int hairEnd = first + Math.round((h - first) * 0.22f);
+        int[] frozen = rgb.clone();
+        for (int y = first; y < Math.min(h, hairEnd); y++) {
+            for (int x = 0; x < w; x++) {
+                int i = y * w + x;
+                float a = alpha[i];
+                if (a <= 0.02f || a >= 0.98f) continue;
+                int c = frozen[i];
+                // 已由上游净化的前景不再反推；仅处理 RGB 仍等于原图的情况。
+                if (colorDistance(c, original[i]) > 9) continue;
+                int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                if (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) > 45) continue;
+                int bgIndex = -1, fgIndex = -1;
+                int bgDistance = Integer.MAX_VALUE, fgDistance = Integer.MAX_VALUE;
+                for (int dy = -radius; dy <= radius; dy++) {
+                    int ny = y + dy;
+                    if (ny < paddedTop || ny >= h) continue;
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        int nx = x + dx, distance = dx * dx + dy * dy;
+                        if (nx < 0 || nx >= w || distance > radius * radius) continue;
+                        int j = ny * w + nx;
+                        if (alpha[j] < 0.02f && distance < bgDistance) { bgIndex = j; bgDistance = distance; }
+                        if (alpha[j] > 0.995f && distance < fgDistance) { fgIndex = j; fgDistance = distance; }
+                    }
+                }
+                if (bgIndex < 0 || fgIndex < 0) continue;
+                int bg = original[bgIndex], fg = frozen[fgIndex];
+                if (luma(bg) < 160 || luma(bg) - luma(fg) < 45) continue;
+                int corrected = 0;
+                for (int shift : new int[]{16, 8, 0}) {
+                    double observed = (c >> shift) & 255;
+                    double background = (bg >> shift) & 255;
+                    double reference = (fg >> shift) & 255;
+                    double unmixed = (observed - background * (1 - a)) / Math.max(a, 0.15);
+                    // 邻近实心发丝提供颜色约束，单通道最多下调 42；连续衰减到实心边界。
+                    double plausible = Math.max(reference - 24, Math.min(reference + 24, unmixed));
+                    double reduction = Math.min(42, Math.max(0, observed - plausible))
+                            * Math.min(1, (0.98 - a) / 0.25);
+                    corrected |= clamp((int) Math.round(observed - reduction)) << shift;
+                }
+                rgb[i] = corrected;
+            }
+        }
+    }
+
+    private static int colorDistance(int a, int b) {
+        return Math.abs(((a >> 16) & 255) - ((b >> 16) & 255))
+                + Math.abs(((a >> 8) & 255) - ((b >> 8) & 255)) + Math.abs((a & 255) - (b & 255));
+    }
+
+    private static double luma(int c) {
+        return 0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255);
     }
 
     private static BufferedImage decode(String imageBase64) {

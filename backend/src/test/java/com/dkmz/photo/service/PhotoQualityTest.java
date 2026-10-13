@@ -13,6 +13,68 @@ import java.util.Base64;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PhotoQualityTest {
+    private static class HairFixture {
+        final float[] alpha = new float[4096];
+        final int[] rgb = new int[4096];
+        final int[] original = new int[4096];
+        final int edge = 20 * 64 + 16;
+        HairFixture() {
+            Arrays.fill(original, 0xF0F0F0);
+            for (int y = 16; y < 48; y++) {
+                for (int x = 17; x < 48; x++) {
+                    int i = y * 64 + x;
+                    alpha[i] = 1;
+                    rgb[i] = original[i] = 0x3C3C3C;
+                }
+            }
+            alpha[edge] = 0.5f;
+            rgb[edge] = original[edge] = 0x969696;
+        }
+        void clean() { PortraitCompositeService.cleanHairEdge(64, 64, alpha, rgb, original, 0); }
+    }
+
+    @Test
+    void hairEdgeRemovesContaminationWithoutChangingAlphaOrOpaqueHighlights() {
+        HairFixture f = new HairFixture();
+        int highlight = 20 * 64 + 20;
+        f.rgb[highlight] = f.original[highlight] = 0xDCDCDC;
+        float[] before = f.alpha.clone();
+        f.clean();
+        assertTrue((f.rgb[f.edge] & 255) < 150);
+        assertTrue((f.rgb[f.edge] & 255) >= 108, "下调幅度应有上限");
+        assertEquals(0xDCDCDC, f.rgb[highlight]);
+        assertArrayEquals(before, f.alpha, "不得削除发丝透明度");
+    }
+
+    @Test
+    void alreadyDecontaminatedPngIsNotCorrectedAgain() {
+        HairFixture f = new HairFixture();
+        f.rgb[f.edge] = 0x3C3C3C;
+        f.clean();
+        assertEquals(0x3C3C3C, f.rgb[f.edge]);
+    }
+
+    @Test
+    void coloredSkinAndLowerFaceArePreserved() {
+        HairFixture f = new HairFixture();
+        f.rgb[f.edge] = f.original[f.edge] = 0xB49678;
+        int eye = 40 * 64 + 16;
+        f.alpha[eye] = 0.5f;
+        f.rgb[eye] = f.original[eye] = 0x969696;
+        f.clean();
+        assertEquals(0xB49678, f.rgb[f.edge]);
+        assertEquals(0x969696, f.rgb[eye]);
+    }
+
+    @Test
+    void whiteHairOnLightBackgroundIsNotDarkened() {
+        HairFixture f = new HairFixture();
+        Arrays.fill(f.rgb, 0xDCDCDC);
+        for (int i = 0; i < f.alpha.length; i++) if (f.alpha[i] > 0) f.original[i] = 0xDCDCDC;
+        f.clean();
+        assertEquals(0xDCDCDC, f.rgb[f.edge]);
+    }
+
     private static BufferedImage solid(int type, int color) {
         BufferedImage image = new BufferedImage(64, 64, type);
         int[] pixels = new int[64 * 64];

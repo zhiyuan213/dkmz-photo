@@ -189,7 +189,7 @@ public class PhotoSegmentController {
 
         try {
             String png = segmentService.segment(input);
-            String payload = wantFinished ? compositeService.composite(png, bgHex, outTop) : png;
+            String payload = wantFinished ? compositeService.composite(png, bgHex, outTop, input) : png;
             long cost = System.currentTimeMillis() - t0;
             // 只记 openid 前缀与耗时，不落任何图片内容
             log.info("segment 调用 user={} beauty={} finished={} cost={}ms",
