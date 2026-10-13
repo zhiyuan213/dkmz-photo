@@ -173,6 +173,7 @@ public class PhotoSegmentController {
         }
 
         boolean beautyApplied = false;
+        String beautySkippedReason = wantBeauty && !beautyEnabled ? "美肤服务未启用" : null;
         String input = image;
         if (wantBeauty && beautyEnabled) {
             try {
@@ -182,6 +183,7 @@ public class PhotoSegmentController {
             } catch (Exception e) {
                 // 美肤失败不阻断抠图主流程，退化为纯抠图
                 log.warn("美肤跳过: {}", e.getMessage());
+                beautySkippedReason = "面部皮肤处理失败，本次仅替换背景";
             }
         }
 
@@ -210,6 +212,7 @@ public class PhotoSegmentController {
             }
 
             out.put("beautyApplied", beautyApplied);
+            if (beautySkippedReason != null) out.put("beautySkippedReason", beautySkippedReason);
             out.put("costMs", cost);
             return out;
         } catch (Exception e) {

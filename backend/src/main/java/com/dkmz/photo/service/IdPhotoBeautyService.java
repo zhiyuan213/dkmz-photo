@@ -5,66 +5,10 @@ import org.springframework.stereotype.Service;
 import java.awt.image.BufferedImage;
 
 /**
- * 证件照美颜（/idphoto/process 链路）—— 美白 + 保边磨皮，纯 Java 实现，无外部依赖
- *
- * ⚠️ 全项目只有这一份美颜算法实现（v1→v9 调试沉淀的定稿版：三档位 + 连续羽化权重）。
- *   两条业务链路都从这里取算法，{@link SkinBeautyService} 只是它的 base64 适配层：
- *   - 完整版「端上换底」链路（/idphoto/process）→ 直接调本类；
- *   - 现网「云端精修」链路（/api/photo/segment）→ 经 SkinBeautyService 适配后调本类。
- *   （历史上 SkinBeautyService 曾是自研的 v2 单档实现：布尔 mask 硬切、无羽化、
- *     旧标定；三条问题都在文档里有记录，现已删除，避免同类算法维护两份。）
- *
- * ============================================================
- * 本文件包含三轮调试沉淀的全部修复，改动前请先读这段
- * ============================================================
- *
- * 【修复 1｜美白标定错误 —— 最初"完全看不出效果"的根本原因】
- *   旧公式：
- *       target = min(240, median + 20 * strength)
- *       gain   = (target - y0) / (target - 40)
- *       delta  = 20 * strength * gain * hiGuard
- *   问题在分母 (target - 40)：当 median=137、strength=0.25 时
- *   target=142、分母=102，正常亮度像素 gain 只有 0.05
- *   → delta ≈ 0.1，实测平均提亮仅 +0.9，肉眼完全看不出。
- *
- *   新公式（提升量直接标定，插值跨度 = 2×提升量）：
- *       lift   = 36 * strength           // 0.25 → 9
- *       target = min(240, median + lift)
- *       span   = max(2 * lift, 8)        // 中位数处 gain 恰好 0.5
- *       gain   = min(1, max(0, (target - y0) / span))
- *       delta  = min(MAX_DELTA, lift * gain * hiGuard * feather)
- *   实测 median=137~141、whiten=0.25 → 平均提亮 +4.6（目标区间 +4~+9）
- *
- * 【修复 2｜磨皮不保边 —— 会糊掉脸颊与眉毛/发际线交界】
- *   直接在 mask 内做平滑，边界像素会和眉毛、发丝混合。
- *   做法：邻域内颜色差 > 阈值(90) 的像素不参与平均 —— 天然保边。
- *   实测纹理保留度 78%（合格区间 60%~85%），细腻但不塑料。
- *
- * 【修复 3｜羽化三处 BUG —— 之前 --feather 调多大都无效】
- *   BUG-A：把模糊结果按 mask 裁剪 → 高斯对称外扩被砍掉一半，过渡带减半
- *   BUG-B：在核心区把权重钉回 1.0 → 心边缘 0.6 硬拉到 1.0，凭空造台阶
- *   BUG-C：误用返回通道数 → 权重图退化成二值
- *   正确做法就一句话：【模糊完直接用，不裁剪、不钉值】。
- *   合成测试（200×200，中央 100×100）：feather=4/6/8/12 → 最大跳变
- *   0.166/0.111/0.083/0.056，单调下降；修复前无论调多大都卡在 0.55 左右。
- *
- * ============================================================
- * 三条过曝保护（缺一不可）
- * ============================================================
- *   1. 自适应锚点：以皮肤区亮度【中位数】为基准，不是固定值
- *      —— 固定锚点会把暗光自拍狂提亮 30+ 点，直接变假脸
- *   2. 提亮封顶：单像素 ≤ 12/255
- *   3. 高光保护：亮区衰减提亮幅度，避免脸曝掉丢失立体感
- *
- * ============================================================
- * 合规红线
- * ============================================================
- *   证件照严禁瘦脸、大眼、重度磨皮等改变面部特征的处理。
- *   办证用途官方明确禁止，过度处理会被判「失真」导致审核不通过。
- *   所以：MAX_DELTA=12，办证档 strength 仅 0.15/0.20。
- *
- *   祛痘不在本类实现 —— Java 原生做高质量 inpainting 成本高，
- *   走 BeautyApiService（腾讯云 BeautifyPic）。
+ * 证件照美肤：按皮肤 mask 连续羽化，轻度提亮和双边保边磨皮。
+ * 两条业务链路共用；档位控制幅度，不改变脸型及五官。
+ * 提亮以皮肤亮度中位数为锚点，保留色度并保护高光。
+ * 磨皮以空间距离、颜色距离和皮肤权重做连续加权，舍入避免累积变暗。
  */
 @Service
 public class IdPhotoBeautyService {
@@ -86,9 +30,6 @@ public class IdPhotoBeautyService {
 
     /** 平滑邻域半径 */
     private static final int SMOOTH_RADIUS = 2;
-
-    /** 去黄强度：Cr 向健康肤色基准靠拢的比例系数 */
-    private static final double CR_TARGET = 150.0;
 
     /**
      * 美颜档位
@@ -132,6 +73,10 @@ public class IdPhotoBeautyService {
     public BufferedImage beautify(BufferedImage src, boolean[] mask, Level level) {
         int w = src.getWidth();
         int h = src.getHeight();
+
+        if (mask == null || mask.length != w * h || level == null) {
+            throw new IllegalArgumentException("皮肤 mask 尺寸或美肤档位无效");
+        }
 
         // 1. 羽化权重：美白用原 mask，磨皮用腐蚀后的 mask
         float[] whitenWeight = buildFeatherWeight(mask, w, h, FEATHER_WHITEN);
@@ -233,10 +178,10 @@ public class IdPhotoBeautyService {
     // ============================================================
 
     /**
-     * YCbCr 空间提亮 + 去黄
+     * YCbCr 空间提亮（保留原色度）
      *
      * 为什么用 YCbCr：RGB 直接加亮度会让肤色往灰色跑，且白底一起被推亮。
-     * 只动 Y（亮度）和 Cr（红度），Cb 保持，色相不会漂。
+     * 只动 Y（亮度），Cb/Cr 保持，避免固定肤色目标导致偏色。
      */
     private BufferedImage whiten(BufferedImage src, float[] weight,
                                  double medianLuma, double strength) {
@@ -280,13 +225,13 @@ public class IdPhotoBeautyService {
             double delta = Math.min(MAX_DELTA, lift * gain * hiGuard * fa);
             double y1 = Math.min(255.0, y0 + delta);
 
-            // 去黄：Cr 向健康肤色靠拢（同样乘 fa，否则边界会有色相突变）
-            double cr1 = cr - (cr - CR_TARGET) * 0.12 * strength * fa;
+            // 保留原始色度，固定 Cr 目标会使不同肤色偏红或偏灰。
+            double cr1 = cr;
 
             // YCbCr → RGB
-            int nr = clamp((int) (y1 + 1.402 * (cr1 - 128.0)));
-            int ng = clamp((int) (y1 - 0.344136 * (cb - 128.0) - 0.714136 * (cr1 - 128.0)));
-            int nb = clamp((int) (y1 + 1.772 * (cb - 128.0)));
+            int nr = clamp((int) Math.round(y1 + 1.402 * (cr1 - 128.0)));
+            int ng = clamp((int) Math.round(y1 - 0.344136 * (cb - 128.0) - 0.714136 * (cr1 - 128.0)));
+            int nb = clamp((int) Math.round(y1 + 1.772 * (cb - 128.0)));
 
             outRgb[i] = (0xFF << 24) | (nr << 16) | (ng << 8) | nb;
         }
@@ -331,35 +276,43 @@ public class IdPhotoBeautyService {
                 int pg = (p >> 8) & 0xFF;
                 int pb = p & 0xFF;
 
-                long sr = 0, sg = 0, sb = 0;
-                int cnt = 0;
+                double sr = 0, sg = 0, sb = 0, totalWeight = 0;
                 for (int dy = -SMOOTH_RADIUS; dy <= SMOOTH_RADIUS; dy++) {
                     int ny = y + dy;
                     if (ny < 0 || ny >= h) continue;
                     for (int dx = -SMOOTH_RADIUS; dx <= SMOOTH_RADIUS; dx++) {
                         int nx = x + dx;
                         if (nx < 0 || nx >= w) continue;
-                        int q = srcRgb[ny * w + nx];
+                        int ni = ny * w + nx;
+                        int q = srcRgb[ni];
                         int qr = (q >> 16) & 0xFF;
                         int qg = (q >> 8) & 0xFF;
                         int qb = q & 0xFF;
                         int diff = Math.abs(qr - pr) + Math.abs(qg - pg) + Math.abs(qb - pb);
                         if (diff > EDGE_THRESHOLD) continue;   // 保边
-                        sr += qr; sg += qg; sb += qb; cnt++;
+                        // 空间、色差及皮肤置信度共同控制贡献，避免眉毛/嘴唇混入平均。
+                        double dr = qr - pr, dg = qg - pg, db = qb - pb;
+                        double contribution = weight[ni] * Math.exp(
+                                -(dx * dx + dy * dy) / 8.0
+                                -(dr * dr + dg * dg + db * db) / (2.0 * 18.0 * 18.0));
+                        sr += qr * contribution;
+                        sg += qg * contribution;
+                        sb += qb * contribution;
+                        totalWeight += contribution;
                     }
                 }
-                if (cnt == 0) {
+                if (totalWeight < 1e-6) {
                     outRgb[i] = p;
                     continue;
                 }
 
-                int ar = (int) (sr / cnt);
-                int ag = (int) (sg / cnt);
-                int ab = (int) (sb / cnt);
+                double ar = sr / totalWeight;
+                double ag = sg / totalWeight;
+                double ab = sb / totalWeight;
 
-                int nr = clamp((int) (ar * sa + pr * (1.0 - sa)));
-                int ng = clamp((int) (ag * sa + pg * (1.0 - sa)));
-                int nb = clamp((int) (ab * sa + pb * (1.0 - sa)));
+                int nr = clamp((int) Math.round(ar * sa + pr * (1.0 - sa)));
+                int ng = clamp((int) Math.round(ag * sa + pg * (1.0 - sa)));
+                int nb = clamp((int) Math.round(ab * sa + pb * (1.0 - sa)));
                 outRgb[i] = (0xFF << 24) | (nr << 16) | (ng << 8) | nb;
             }
         }

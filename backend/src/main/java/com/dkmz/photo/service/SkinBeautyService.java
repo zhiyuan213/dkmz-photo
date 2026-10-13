@@ -113,8 +113,7 @@ public class SkinBeautyService {
     public String beautify(String imageBase64, String maskBase64, IdPhotoBeautyService.Level level) {
         String pure = stripDataUrlPrefix(imageBase64);
         if (maskBase64 == null || maskBase64.isEmpty()) {
-            log.info("无皮肤 mask，跳过美肤");
-            return pure;
+            throw new IllegalArgumentException("未获取到皮肤 mask");
         }
 
         BufferedImage img = decode(pure);
@@ -130,9 +129,12 @@ public class SkinBeautyService {
 
         boolean[] mask = parseMask(maskBase64, w, h);
         if (mask == null) {
-            log.info("皮肤 mask 解析失败，跳过美肤");
-            return pure;
+            throw new IllegalArgumentException("皮肤 mask 解析失败");
         }
+
+        boolean hasSkin = false;
+        for (boolean pixel : mask) hasSkin |= pixel;
+        if (!hasSkin) throw new IllegalArgumentException("未识别到面部皮肤");
 
         BufferedImage out = beauty.beautify(work, mask, level);
         log.info("美肤完成 v9 level={} whiten={} smooth={}", level.key, level.whiten, level.smooth);
