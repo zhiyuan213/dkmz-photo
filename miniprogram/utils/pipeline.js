@@ -31,6 +31,7 @@
 
 const matting = require('./matting');
 const face = require('./face');
+const { cloudProcessingSizes } = require('./processing-size');
 
 /** 人脸检测送检上限（最长边），兼顾速度与精度；坐标按比例映射回原图 */
 const FACE_DETECT_CAP = 1280;
@@ -776,14 +777,11 @@ function maskFromGrayPng(pngPath) {
 }
 
 /**
- * 云端精修的「上传图」策略：
- *   上传图 = 与输出同尺寸（480×640 量级）、同一个裁剪框，质量按梯队自适应下调。
- *   ① 构图与输出一致 ⇒ 云端成品图尺寸就等于输出尺寸，端上零缩放、分辨率不缩水；
- *   ② base64 必须 < 100KB（callContainer 请求包硬限制，超了报 -606001）。
- *      微信二次压缩过的相册图噪点多，同质量下体积明显更大（480×640@0.95 实测 89.8KB
- *      卡在临界，相机图过、相册图挂），所以从 0.9 起按梯队逐级回退。
+ * 工作图优先长边 960，受原始裁剪分辨率、最多 3 倍采样和请求体积限制。
+ * 超出 90KB base64 时先尝试 95/90/85% 质量，再逐档减小尺寸。
+ * 云端处理后才缩到最终报名规格，避免在小图上直接分割与磨皮。
  */
-const CLOUD_UPLOAD_QUALITY_LADDER = [0.9, 0.85, 0.8, 0.72, 0.65];
+const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85];
 const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
 
 /** 裁剪框越出原图的顶部行数（calcCropBox 只允许顶部越界），用于告知云端强制透明 */
@@ -805,19 +803,34 @@ function outOfSourceTopRows(box, outH) {
  *                    maskHeight?:number, beautyApplied:boolean, alphaOnly?:boolean}>}
  */
 function cloudMatting(req, cloudSegment) {
-  const { imgPath, box, outW, outH, bgHex, outTop, alphaOnly } = req;
-  const shoot = (i) => {
-    const q = CLOUD_UPLOAD_QUALITY_LADDER[i];
-    return cropAndScale(imgPath, box, outW, outH, q)
-      .then(fileToBase64)
+  const { imgPath, box, outW, outH, bgHex, alphaOnly } = req;
+  const sizes = cloudProcessingSizes(box, outW, outH);
+  const shoot = (sizeIndex, qualityIndex) => {
+    const size = sizes[sizeIndex];
+    const q = CLOUD_UPLOAD_QUALITY_LADDER[qualityIndex];
+    return cropAndScale(imgPath, box, size.width, size.height, q)
+      .then((path) => fileToBase64(path).then((b64) => {
+        removeTempFile(path);
+        return b64;
+      }, (error) => {
+        removeTempFile(path);
+        throw error;
+      }))
       .then((b64) => {
-        if (b64.length <= CLOUD_PAYLOAD_LIMIT) return b64;
-        if (i + 1 < CLOUD_UPLOAD_QUALITY_LADDER.length) return shoot(i + 1);
+        if (b64.length <= CLOUD_PAYLOAD_LIMIT) return { b64, size, quality: q };
+        if (qualityIndex + 1 < CLOUD_UPLOAD_QUALITY_LADDER.length) return shoot(sizeIndex, qualityIndex + 1);
+        if (sizeIndex + 1 < sizes.length) return shoot(sizeIndex + 1, 0);
         throw new Error(`上传图过大（${Math.round(b64.length / 1024)}KB）`);
       });
   };
-  return shoot(0)
-    .then((b64) => cloudSegment(b64, alphaOnly ? { alphaOnly: true } : { bgHex, outTop }))
+  let upload;
+  return shoot(0, 0)
+    .then((prepared) => {
+      upload = prepared;
+      return cloudSegment(prepared.b64, alphaOnly ? { alphaOnly: true } : {
+        bgHex, outTop: outOfSourceTopRows(box, prepared.size.height),
+      });
+    })
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {
         throw new Error((res && res.msg) || '云端精修不可用');
@@ -835,6 +848,8 @@ function cloudMatting(req, cloudSegment) {
           finishedPath: p,
           beautyApplied,
           beautySkippedReason: res.beautySkippedReason,
+          processingSize: upload.size,
+          uploadQuality: upload.quality,
         }));
       }
       // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
@@ -908,6 +923,9 @@ function makeIdPhoto(opts) {
           v: mode === 'cloud' ? `${ms} ms（腾讯云 BDA）` : `${ms} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）`,
         });
         if (mode === 'cloud') {
+          if (r.processingSize) {
+            metrics.push({ k: '处理分辨率', v: `${r.processingSize.width}×${r.processingSize.height}（上传质量 ${Math.round(r.uploadQuality * 100)}%）` });
+          }
           if (r.alphaOnly) {
             // 只替换背景：云端只回 alpha，换底在端上完成（流量 10~30KB 级）
             metrics.push({ k: '云端回传', v: 'alpha 灰度图（端上换底）' });
