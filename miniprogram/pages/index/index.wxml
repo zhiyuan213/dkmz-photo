@@ -1,18 +1,16 @@
 <view class="page">
 
   <view class="hero-wrap">
-    <view class="hero-main">
-      <view class="hero-copy">
-        <view class="hero-title">考试报名照</view>
-        <view class="hero-title">3 分钟搞定</view>
-        <view class="hero-sub">选规格 · 换底色 · 高清导出</view>
-      </view>
-      <view class="hero-art" wx:if="{{bannerOk}}">
-        <image class="hero-banner" src="/assets/banner-hero.jpg" mode="widthFix" binderror="onBannerError" />
-      </view>
-    </view>
-    <view class="hero-features">
-      <text>报名规格</text><text>自动裁剪</text><text>多种底色</text><text>高清导出</text>
+    <image
+      wx:if="{{bannerOk}}"
+      class="hero-banner"
+      src="/assets/banner-hero.jpg"
+      mode="aspectFill"
+      binderror="onBannerError"
+    />
+    <view class="hero-fallback" wx:else>
+      <view class="hero-fallback-title">考试报名照，3 分钟搞定</view>
+      <view class="hero-fallback-sub">选规格 · 自动裁剪 · 一键换底 · 按规格导出</view>
     </view>
     <button class="share-btn" size="mini" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
       <image class="share-icon" src="/assets/share-plane.png" mode="aspectFit" />
