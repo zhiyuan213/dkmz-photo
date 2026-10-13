@@ -15,7 +15,7 @@
     <view class="hero-sub">选考试 → 自动裁剪 → 一键换底 → 按规格导出</view>
   </view>
 
-  <button class="share-btn" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
+  <button class="share-btn" size="mini" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
     <image class="share-icon" src="/assets/share-plane.png" mode="aspectFit" />
   </button>
   </view>

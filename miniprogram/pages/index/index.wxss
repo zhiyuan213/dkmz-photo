@@ -3,19 +3,26 @@
   position: relative;
 }
 
-.share-btn {
+button.share-btn {
   position: absolute;
   top: 16rpx;
   right: 0;
-  width: 80rpx;
+  /* 显式覆盖微信原生 button 的默认宽度，防止撑成横幅长条。 */
+  width: 80rpx !important;
+  min-width: 0 !important;
+  max-width: 80rpx !important;
   height: 80rpx;
-  padding: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   margin: 0;
   line-height: 1;
   background: rgba(255, 255, 255, 0.94);
   border-radius: 18rpx;
   box-shadow: 0 2rpx 8rpx rgba(23, 78, 166, 0.1);
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .share-btn::after { border: none; }
