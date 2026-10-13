@@ -1,16 +1,17 @@
 /* 左侧使用清晰原生文字，右侧按素材原始比例完整展示插画。 */
 .hero-wrap {
   position: relative;
-  margin: -8rpx -24rpx 24rpx;
-  padding: 22rpx 26rpx 16rpx;
+  margin: -8rpx 0 24rpx;
+  padding: 22rpx 24rpx 16rpx;
   overflow: hidden;
   background: linear-gradient(135deg, #eaf4ff, #f3f8ff);
+  border-radius: 18rpx;
 }
 .hero-main { position: relative; height: 154rpx; }
 .hero-copy { position: relative; z-index: 1; padding-top: 20rpx; width: 448rpx; }
 .hero-title { white-space: nowrap; font-size: 34rpx; line-height: 1.5; font-weight: 700; color: #18345c; }
 .hero-sub { margin-top: 9rpx; font-size: 23rpx; line-height: 1.6; color: #617591; }
-.hero-art { position: absolute; right: -8rpx; bottom: 0; width: 280rpx; height: 154rpx; overflow: hidden; }
+.hero-art { position: absolute; right: 6rpx; bottom: 0; width: 280rpx; height: 154rpx; overflow: hidden; }
 .hero-banner { position: absolute; right: 0; bottom: 0; width: 700rpx; display: block; }
 .hero-features { display: flex; gap: 8rpx; padding-top: 12rpx; border-top: 1rpx solid #d9e7f7; }
 .hero-features text { flex: 1; text-align: center; font-size: 22rpx; line-height: 1.6; color: #476789; }
