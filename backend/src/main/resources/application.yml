@@ -62,6 +62,8 @@ wx:
 
 # 运维/管理接口口令（规格库后台维护、兜底查单、订单总览、权益修数）
 photo:
+  # 小程序审核模式：true 隐藏购买入口并允许免费导出；false 走正常权益校验。
+  review-mode: ${REVIEW_MODE:false}
   job-token: ${PHOTO_JOB_TOKEN:change-me}
   # /idphoto/process 走公网直连（端上 wx.request，拿不到云托管注入的平台身份），
   # 置空 = 不校验（仅本地联调）；上线前务必配一个随机串，端上需带请求头 X-Photo-Token。

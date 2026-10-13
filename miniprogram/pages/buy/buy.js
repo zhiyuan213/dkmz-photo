@@ -1,6 +1,6 @@
 const api = require('../../utils/api.js');
 const buy = require('../../utils/buy.js');
-const { REVIEW_MODE } = require('../../utils/config.js');
+const config = require('../../utils/config.js');
 
 /** 商品卡辅助文案：会员显示天数，张数包显示张数 */
 function benefitText(g) {
@@ -9,7 +9,7 @@ function benefitText(g) {
   return '—';
 }
 
-Page({
+Page(config.withConfig({
   data: {
     loading: true,
     goods: [],
@@ -17,12 +17,12 @@ Page({
     cloudEnabled: true,
     error: '',
     paying: false,
-    reviewMode: REVIEW_MODE,
+    reviewMode: config.isReviewMode(),
   },
 
   onLoad() {
     // 备案模式：深链进入也只显示占位，不拉商品/权益、不出现任何价格
-    if (REVIEW_MODE) {
+    if (config.isReviewMode()) {
       this.setData({ loading: false });
       return;
     }
@@ -36,13 +36,13 @@ Page({
 
   onShow() {
     // 从订单页 / 支付收银台返回后刷新权益
-    if (!REVIEW_MODE && api.isCloudEnabled() && !this.data.loading) {
+    if (!config.isReviewMode() && api.isCloudEnabled() && !this.data.loading) {
       this.load();
     }
   },
 
   onPullDownRefresh() {
-    if (REVIEW_MODE) {
+    if (config.isReviewMode()) {
       wx.stopPullDownRefresh();
       return;
     }
@@ -98,4 +98,4 @@ Page({
   onGoHome() {
     wx.reLaunch({ url: '/pages/index/index' });
   },
-});
+}));

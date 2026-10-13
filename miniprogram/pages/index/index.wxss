@@ -1,4 +1,27 @@
 /* 头图横幅：全出血（抵消 .page 左右 padding），宽度补 48rpx，高度随比例 */
+.hero-wrap {
+  position: relative;
+}
+
+.share-btn {
+  position: absolute;
+  top: 16rpx;
+  right: 0;
+  width: 80rpx;
+  height: 80rpx;
+  padding: 18rpx;
+  margin: 0;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 18rpx;
+  box-shadow: 0 2rpx 8rpx rgba(23, 78, 166, 0.1);
+  box-sizing: border-box;
+}
+
+.share-btn::after { border: none; }
+.share-icon { width: 44rpx; height: 44rpx; }
+.share-pressed { opacity: 0.7; }
+
 .hero-banner {
   display: block;
   width: calc(100% + 48rpx);
@@ -7,7 +30,7 @@
 
 /* 横幅加载失败时的文字版头（兜底） */
 .hero {
-  padding: 40rpx 8rpx 28rpx;
+  padding: 40rpx 96rpx 28rpx 8rpx;
 }
 
 .hero-title {
@@ -45,12 +68,14 @@
   font-size: 32rpx;
   font-weight: 600;
   color: #1f2430;
+  line-height: 1.5;
 }
 
 .exam-stage {
   margin-top: 6rpx;
   font-size: 24rpx;
-  color: #8a94a6;
+  color: #66738a;
+  line-height: 1.6;
 }
 
 .exam-meta {

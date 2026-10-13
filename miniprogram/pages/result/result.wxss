@@ -20,8 +20,10 @@
 
 .watermark-tip {
   margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #a8b0bd;
+  font-size: 24rpx;
+  color: #66738a;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .check {
@@ -50,6 +52,7 @@
 
 .check-body {
   flex: 1;
+  min-width: 0;
 }
 
 .check-k {
@@ -60,8 +63,8 @@
 
 .check-v {
   margin-top: 4rpx;
-  font-size: 24rpx;
-  color: #8a94a6;
+  font-size: 25rpx;
+  color: #66738a;
   line-height: 1.6;
 }
 
@@ -69,6 +72,20 @@
   font-size: 26rpx;
   color: #5a6474;
   line-height: 1.8;
+  margin-bottom: 10rpx;
+}
+
+.exam-subtitle {
+  margin: -6rpx 0 20rpx;
+  font-size: 26rpx;
+  color: #66738a;
+  line-height: 1.6;
+}
+
+.kv .v {
+  max-width: 66%;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .btn.big {

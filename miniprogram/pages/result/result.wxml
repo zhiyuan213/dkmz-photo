@@ -9,7 +9,8 @@
 
   <!-- 规格校验 -->
   <view class="card">
-    <view class="card-title">规格校验（{{exam.name}}）</view>
+    <view class="card-title">规格检查</view>
+    <view class="exam-subtitle">{{exam.name}}</view>
     <view class="check" wx:for="{{checks}}" wx:key="k">
       <text class="check-icon {{item.warn ? 'warn' : item.ok ? 'ok' : 'bad'}}">{{item.warn ? '⚠' : item.ok ? '✓' : '✗'}}</text>
       <view class="check-body">
@@ -27,7 +28,7 @@
 
   <!-- 官方要求 -->
   <view class="card">
-    <view class="card-title">官方要求提醒</view>
+    <view class="card-title">拍摄与提交提醒</view>
     <view class="note" wx:for="{{notes}}" wx:key="*this">· {{item}}</view>
   </view>
 

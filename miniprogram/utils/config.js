@@ -1,20 +1,63 @@
-/**
- * 全局构建开关（改这里 → 重新编译/上传即生效）
- *
- * REVIEW_MODE = 备案/审核模式
- *   个人主体在「小程序备案」审核期间开启：隐藏一切商业化界面入口
- *   （购买页、价格、会员、订单/权益入口），并把导出简化为「直接保存高清无水印」，
- *   让审核员看到的是一个纯粹的个人开发者工具，规避
- *   「不符合个人小程序主体定位 / 含企业性质展示」的驳回口径。
- *
- *   开启后的行为：
- *     1. 首页隐藏「我的订单与权益」与「端上引擎自检（开发用）」入口
- *     2. 订单页只显示中性空态（不展示权益、订单金额、购买按钮）
- *     3. 购买页显示「功能调整中」占位，深链进入也不出现商品/价格
- *     4. 结果页展示与保存的都是高清无水印图，不做权益校验（正常模式会校验并可能引导购买）
- *
- * ⚠️ 备案通过后必须改回 false 再提审/发布正式版本，否则付费墙失效。
- */
-const REVIEW_MODE = true;
+const api = require('./api');
 
-module.exports = { REVIEW_MODE };
+// 未加载配置时默认走正常权益校验，网络错误不能放行免费导出。
+let reviewMode = false;
+let loaded = false;
+let pending = null;
+function isReviewMode() { return reviewMode; }
+function load(force) {
+  if (pending) return pending;
+  if (loaded && !force) return Promise.resolve({ reviewMode });
+  pending = api.call('/api/photo/config', 'GET', {}, 8000).then((res) => {
+    if (!res || res.ok !== true || typeof res.reviewMode !== 'boolean') throw new Error('服务配置返回异常');
+    reviewMode = res.reviewMode;
+    loaded = true;
+    return { reviewMode };
+  }).catch((error) => {
+    reviewMode = false;
+    loaded = false;
+    throw error;
+  }).finally(() => { pending = null; });
+  return pending;
+}
+function withConfig(page) {
+  page.data = Object.assign({}, page.data, { configLoading: true });
+  const unload = page.onUnload;
+  page.onUnload = function (...args) {
+    this._configUnloaded = true;
+    if (unload) return unload.apply(this, args);
+  };
+  ['onLoad', 'onShow', 'onPullDownRefresh'].forEach((name) => {
+    const handler = page[name];
+    if (name === 'onPullDownRefresh' && !handler) return;
+    page[name] = function (...args) {
+      if (name === 'onLoad') this._configUnloaded = false;
+      return load(name !== 'onLoad').catch((error) => {
+        console.warn('[photo][config] 配置获取失败，使用正常权益校验', error && (error.msg || error.message));
+      }).then(() => {
+        if (this._configUnloaded) return;
+        this.setData({ reviewMode, configLoading: false });
+        if (this._result) this.setData({ src: reviewMode ? this._result.path || this._result.previewPath
+          : this._result.previewPath || this._result.path });
+        if (handler) return handler.apply(this, args);
+      });
+    };
+  });
+  ['onSave', 'onBuy'].forEach((name) => {
+    const handler = page[name];
+    if (!handler) return;
+    page[name] = function (...args) {
+      if (this._configActionPending || this.data.saving || this.data.saved || this.data.paying) return;
+      this._configActionPending = true;
+      return load(true).then(() => {
+        this.setData({ reviewMode });
+        if (name === 'onBuy' && reviewMode) return;
+        return handler.apply(this, args);
+      }).catch(() => {
+        wx.showToast({ title: '配置获取失败，请稍后重试', icon: 'none' });
+      }).finally(() => { this._configActionPending = false; });
+    };
+  });
+  return page;
+}
+module.exports = { isReviewMode, load, withConfig };

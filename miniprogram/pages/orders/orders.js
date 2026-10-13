@@ -1,5 +1,5 @@
 const api = require('../../utils/api.js');
-const { REVIEW_MODE } = require('../../utils/config.js');
+const config = require('../../utils/config.js');
 
 /** 订单状态 → 展示文案（后端状态机：INIT 未支付 / DELIVERED 已到账 / REFUNDED 已退款） */
 const STATUS_TEXT = {
@@ -9,19 +9,19 @@ const STATUS_TEXT = {
   REFUNDED: { text: '已退款', cls: 'refunded' },
 };
 
-Page({
+Page(config.withConfig({
   data: {
     loading: true,
     orders: [],
     entitlement: null,
     cloudEnabled: true,
     error: '',
-    reviewMode: REVIEW_MODE,
+    reviewMode: config.isReviewMode(),
   },
 
   onLoad() {
     // 备案模式：页面只渲染中性空态，不请求订单/权益数据
-    if (REVIEW_MODE) {
+    if (config.isReviewMode()) {
       this.setData({ loading: false });
       return;
     }
@@ -35,13 +35,13 @@ Page({
 
   onShow() {
     // 从支付页返回后刷新（支付状态可能已变更）
-    if (!REVIEW_MODE && api.isCloudEnabled() && !this.data.loading) {
+    if (!config.isReviewMode() && api.isCloudEnabled() && !this.data.loading) {
       this.loadAll();
     }
   },
 
   onPullDownRefresh() {
-    if (REVIEW_MODE) {
+    if (config.isReviewMode()) {
       wx.stopPullDownRefresh();
       return;
     }
@@ -96,4 +96,4 @@ Page({
   onGoHome() {
     wx.reLaunch({ url: '/pages/index/index' });
   },
-});
+}));

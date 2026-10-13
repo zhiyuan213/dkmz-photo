@@ -1,5 +1,6 @@
 <view class="page">
 
+  <view class="hero-wrap">
   <!-- 头图横幅（设计稿裁切，含主标题/流程/卖点；全出血铺满屏幕宽） -->
   <image
     wx:if="{{bannerOk}}"
@@ -12,6 +13,11 @@
   <view class="hero" wx:else>
     <view class="hero-title">考试报名照，3 分钟搞定</view>
     <view class="hero-sub">选考试 → 自动裁剪 → 一键换底 → 按规格导出</view>
+  </view>
+
+  <button class="share-btn" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
+    <image class="share-icon" src="/assets/share-plane.png" mode="aspectFit" />
+  </button>
   </view>
 
   <view class="list">
@@ -40,7 +46,7 @@
   <view class="footer">
     <view class="footer-meta">{{specSource}} v{{meta.version}} · 更新于 {{meta.updatedAt}}</view>
     <view class="footer-disclaimer">{{meta.disclaimer}}</view>
-    <view class="footer-orders" wx:if="{{!reviewMode}}" bindtap="onOpenOrders">
+    <view class="footer-orders" wx:if="{{!configLoading && !reviewMode}}" bindtap="onOpenOrders">
       <text>我的订单与权益</text>
       <text class="footer-orders-arrow">›</text>
     </view>
@@ -51,7 +57,7 @@
       <text class="footer-link-sep">·</text>
       <text class="footer-link" bindtap="onOpenAgreement">用户协议</text>
     </view>
-    <view class="footer-lab" wx:if="{{!reviewMode}}" bindtap="onOpenLab">端上引擎自检（开发用）›</view>
+    <view class="footer-lab" wx:if="{{!configLoading && !reviewMode}}" bindtap="onOpenLab">端上引擎自检（开发用）›</view>
   </view>
 
 </view>

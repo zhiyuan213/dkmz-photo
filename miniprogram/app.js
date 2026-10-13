@@ -1,6 +1,6 @@
 const specs = require('./utils/specs.js');
 const api = require('./utils/api.js');
-const { REVIEW_MODE } = require('./utils/config.js');
+const config = require('./utils/config.js');
 
 App({
   onLaunch() {
@@ -12,12 +12,12 @@ App({
       brand: info.brand || '',
       model: info.model || '',
       cloudEnabled: api.isCloudEnabled(),
-      reviewMode: REVIEW_MODE,
+      reviewMode: config.isReviewMode(),
     };
 
-    if (REVIEW_MODE) {
-      console.warn('[photo][app] REVIEW_MODE 已开启（备案模式）：商业化入口隐藏、导出不做权益校验。发布正式版本前请改回 false。');
-    }
+    config.load().then((settings) => {
+      this.globalData.reviewMode = settings.reviewMode;
+    }).catch(() => { this.globalData.reviewMode = false; });
 
     // 云托管初始化（未配 ENV_ID 时静默跳过，全部功能走内置数据）
     // 真正的 init 由 api.js 的 ensureInit 统一负责（懒初始化），这里提前触发一次即可

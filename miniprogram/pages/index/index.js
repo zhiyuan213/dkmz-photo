@@ -1,14 +1,14 @@
 const specs = require('../../utils/specs');
-const { REVIEW_MODE } = require('../../utils/config.js');
+const config = require('../../utils/config.js');
 
-Page({
+Page(config.withConfig({
   data: {
     exams: [],
     meta: specs.META,
     specSource: specs.sourceInfo().sourceText,
     bannerOk: true,
     // 备案模式：隐藏订单/权益入口与开发用自检入口
-    reviewMode: REVIEW_MODE,
+    reviewMode: config.isReviewMode(),
   },
 
   /** 头图横幅加载失败 → 回退文字版头（本地包内资源一般不会失败，防御性兜底） */
@@ -87,7 +87,11 @@ Page({
     wx.navigateTo({ url: '/pages/privacy/privacy' });
   },
 
+  onShareAppMessage() {
+    return { title: '登科喵证件照｜选规格，一键换底', path: '/pages/index/index' };
+  },
+
   onOpenAgreement() {
     wx.navigateTo({ url: '/pages/agreement/agreement' });
   },
-});
+}));

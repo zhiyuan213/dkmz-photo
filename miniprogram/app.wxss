@@ -27,6 +27,7 @@ page {
   font-size: 30rpx;
   font-weight: 600;
   margin-bottom: 16rpx;
+  line-height: 1.5;
 }
 
 .kv {
@@ -75,9 +76,9 @@ page {
 }
 
 .hint {
-  font-size: 22rpx;
-  color: #8a94a6;
-  line-height: 1.6;
+  font-size: 24rpx;
+  color: #66738a;
+  line-height: 1.7;
   margin-top: 10rpx;
 }
 
