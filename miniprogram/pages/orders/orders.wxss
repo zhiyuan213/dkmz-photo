@@ -46,11 +46,16 @@
 }
 
 .order-name {
+  flex: 1;
+  min-width: 0;
   font-size: 30rpx;
   font-weight: 600;
+  line-height: 1.5;
 }
 
 .order-status {
+  flex-shrink: 0;
+  margin-left: 16rpx;
   font-size: 24rpx;
   padding: 4rpx 14rpx;
   border-radius: 100rpx;
@@ -124,12 +129,38 @@
 .foot-note {
   margin: 8rpx 4rpx 24rpx;
   font-size: 23rpx;
-  color: #98a2b3;
+  color: #66738a;
   line-height: 1.6;
 }
 
 .back {
   margin-top: 16rpx;
+}
+
+.order-actions {
+  margin-top: 24rpx;
+}
+
+button.btn.back {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 96rpx;
+  padding: 0 24rpx;
+  margin-left: 0;
+  margin-right: 0;
+  line-height: 1.5;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+button.btn.purchase {
+  background: #0d60f8;
+  color: #fff;
 }
 
 .btn {
