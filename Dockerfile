@@ -20,8 +20,9 @@ RUN mvn -B -s /root/.m2/settings.xml clean package -DskipTests
 # ---------- 运行阶段：仅 JRE，镜像更小 ----------
 FROM eclipse-temurin:17-jre
 WORKDIR /app
+ENV TZ=Asia/Shanghai
 
 # 容器内存感知的 JVM 参数，适配云托管按量内存
 COPY --from=build /app/target/app.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Duser.timezone=Asia/Shanghai", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]

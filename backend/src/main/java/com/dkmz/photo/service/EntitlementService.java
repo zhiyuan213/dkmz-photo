@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,6 +32,7 @@ public class EntitlementService {
 
     /** 免费体验张数：让用户在真机上先看到「无水印成品」长什么样，降低付费决策门槛 */
     public static final int DEFAULT_FREE_QUOTA = 1;
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PhotoEntitlementMapper entMapper;
     private final PhotoExportMapper exportMapper;
@@ -69,7 +71,11 @@ public class EntitlementService {
 
     /** 会员是否在有效期内 */
     public static boolean vipActive(PhotoEntitlement e) {
-        return e != null && e.getVipExpireAt() != null && e.getVipExpireAt().isAfter(LocalDateTime.now());
+        return vipActiveAt(e, LocalDateTime.now(BUSINESS_ZONE));
+    }
+
+    static boolean vipActiveAt(PhotoEntitlement e, LocalDateTime now) {
+        return e != null && e.getVipExpireAt() != null && e.getVipExpireAt().isAfter(now);
     }
 
     public Map<String, Object> view(String openid) {
@@ -183,7 +189,8 @@ public class EntitlementService {
     }
 
     /**
-     * 加会员天数：从「当前到期时间与现在之中的较晚者」起算，续费是叠加而不是覆盖。
+     * 加会员时长：从「当前到期时间与现在之中的较晚者」起算，续费叠加而不是覆盖。
+     * 商品配置中的 365 天代表一个自然年，跨闰年仍在下一年同月同日到期。
      */
     public void addVipDays(String openid, int days) {
         if (days <= 0) {
@@ -192,7 +199,8 @@ public class EntitlementService {
         ensure(openid);
         entMapper.update(null, new UpdateWrapper<PhotoEntitlement>()
                 .eq("openid", openid)
-                .setSql("vip_expire_at = DATE_ADD(GREATEST(IFNULL(vip_expire_at, NOW()), NOW()), INTERVAL " + days + " DAY)"));
+                .setSql("vip_expire_at = " + shiftVipSql(
+                        "GREATEST(IFNULL(vip_expire_at, NOW()), NOW())", days, true)));
         log.info("vip_expire_at 原子顺延 openid={} days={}", openid, days);
     }
 
@@ -216,7 +224,8 @@ public class EntitlementService {
         ensure(openid);
         entMapper.update(null, new UpdateWrapper<PhotoEntitlement>()
                 .eq("openid", openid)
-                .setSql("vip_expire_at = GREATEST(DATE_SUB(IFNULL(vip_expire_at, NOW()), INTERVAL " + days + " DAY), NOW())"));
+                .setSql("vip_expire_at = GREATEST(" + shiftVipSql(
+                        "IFNULL(vip_expire_at, NOW())", days, false) + ", NOW())"));
         log.info("vip_expire_at 原子回退 openid={} days={}", openid, days);
     }
 
@@ -254,12 +263,20 @@ public class EntitlementService {
             } else {
                 entMapper.update(null, new UpdateWrapper<PhotoEntitlement>()
                         .eq("openid", openid)
-                        .setSql("vip_expire_at = DATE_ADD(NOW(), INTERVAL " + vipDays + " DAY)"));
+                        .setSql("vip_expire_at = " + shiftVipSql("NOW()", vipDays, true)));
             }
         }
         Map<String, Object> out = view(openid);
         out.put("openid", openid);
         log.info("管理端修数 openid={} paidQuota={} vipDays={}", openid, paidQuota, vipDays);
         return out;
+    }
+
+    static String shiftVipSql(String base, int days, boolean add) {
+        String function = add ? "DATE_ADD" : "DATE_SUB";
+        if (days >= 365 && days % 365 == 0) {
+            return function + "(" + base + ", INTERVAL " + (days / 365) + " YEAR)";
+        }
+        return function + "(" + base + ", INTERVAL " + days + " DAY)";
     }
 }

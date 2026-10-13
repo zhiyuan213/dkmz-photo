@@ -24,6 +24,9 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dkmz_photo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      # 会员发放使用数据库 NOW()，连接建立时固定为北京时间，避免数据库主机时区造成偏差。
+      connection-init-sql: "SET time_zone = '+08:00'"
   sql:
     init:
       mode: always   # 每次启动执行 schema.sql（全部 IF NOT EXISTS，可重复执行）
@@ -58,7 +61,8 @@ wx:
     appkey-sandbox: ${XPHOTO_APP_KEY_SANDBOX:}
     env: ${XPHOTO_ENV:0}
     push-token: ${XPHOTO_PUSH_TOKEN:}
-    goods: ${XPHOTO_GOODS:photo1:390:1:0:单张高清无水印导出;photo3:690:3:0:规格套装（3 张）;vip1:1990:0:365:年会员（365 天不限张数）}
+    # 会员商品仍以 365 作为“一自然年”的配置标记，服务端按 YEAR 运算，跨闰年不提前一天。
+    goods: ${XPHOTO_GOODS:photo1:390:1:0:单张高清无水印导出;photo3:690:3:0:规格套装（3 张）;vip1:1990:0:365:年会员（1 年不限保存次数）}
 
 # 运维/管理接口口令（规格库后台维护、兜底查单、订单总览、权益修数）
 photo:

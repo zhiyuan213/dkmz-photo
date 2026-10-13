@@ -14,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -69,6 +71,7 @@ public class PhotoPayService {
     private final PhotoPayRefundMapper payRefundMapper;
     private final EntitlementService entitlementService;
     private final TokenManager tokenManager;
+    private final TransactionTemplate transaction;
 
     @Value("${wx.appid:}")
     private String appid;
@@ -104,11 +107,13 @@ public class PhotoPayService {
     public PhotoPayService(PhotoPayOrderMapper payOrderMapper,
                            PhotoPayRefundMapper payRefundMapper,
                            EntitlementService entitlementService,
-                           TokenManager tokenManager) {
+                           TokenManager tokenManager,
+                           PlatformTransactionManager transactionManager) {
         this.payOrderMapper = payOrderMapper;
         this.payRefundMapper = payRefundMapper;
         this.entitlementService = entitlementService;
         this.tokenManager = tokenManager;
+        this.transaction = new TransactionTemplate(transactionManager);
     }
 
     // ==========================================================
@@ -406,6 +411,14 @@ public class PhotoPayService {
     private boolean claimAndDeliver(String outTradeNo, String openid, int quotaDelta, int vipDays,
                                     String wxOrderId, String transactionId, Integer actualFen,
                                     String source) {
+        Boolean delivered = transaction.execute(status -> claimAndDeliverInTransaction(
+                outTradeNo, openid, quotaDelta, vipDays, wxOrderId, transactionId, actualFen, source));
+        return Boolean.TRUE.equals(delivered);
+    }
+
+    private boolean claimAndDeliverInTransaction(String outTradeNo, String openid, int quotaDelta, int vipDays,
+                                                 String wxOrderId, String transactionId, Integer actualFen,
+                                                 String source) {
         UpdateWrapper<PhotoPayOrder> uw = new UpdateWrapper<PhotoPayOrder>()
                 .eq("out_trade_no", outTradeNo)
                 .in("status", "INIT", "PAID")

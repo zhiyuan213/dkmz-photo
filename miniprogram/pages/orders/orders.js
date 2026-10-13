@@ -79,6 +79,7 @@ Page(config.withConfig({
 
   /** 权益描述：会员显示到期日，张数包显示张数 */
   benefitText(o) {
+    if (o.vipDays === 365) return '年会员 · 1 年';
     if (o.vipDays > 0) return `会员 ${o.vipDays} 天`;
     if (o.quotaDelta > 0) return `高清导出 ${o.quotaDelta} 张`;
     return '—';
