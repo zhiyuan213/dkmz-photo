@@ -1,17 +1,26 @@
-/* 头图横幅：全出血（抵消 .page 左右 padding），宽度补 48rpx，高度随比例 */
+/* 使用原生文字和独立插画，让横幅在手机上保持清晰可读。 */
 .hero-wrap {
   position: relative;
+  margin: -8rpx -24rpx 24rpx;
+  padding: 28rpx 28rpx 22rpx;
+  background: linear-gradient(135deg, #e9f3ff, #f5f9ff);
 }
-
+.hero-main { position: relative; min-height: 232rpx; }
+.hero-copy { position: relative; z-index: 1; padding-top: 10rpx; width: 430rpx; }
+.hero-title { font-size: 42rpx; line-height: 1.4; font-weight: 700; color: #182d50; }
+.hero-sub { margin-top: 14rpx; font-size: 25rpx; line-height: 1.6; color: #586e8e; }
+.hero-art { position: absolute; right: 0; bottom: 0; width: 258rpx; height: 204rpx; overflow: hidden; }
+.hero-banner { position: absolute; right: -4rpx; bottom: 0; width: 930rpx; display: block; }
+.hero-features { display: flex; justify-content: space-between; gap: 12rpx; padding-top: 14rpx; border-top: 1rpx solid #dce8f7; }
+.hero-features text { flex: 1; text-align: center; font-size: 24rpx; line-height: 1.6; color: #42648c; }
 button.share-btn {
   position: absolute;
-  top: 16rpx;
-  right: 0;
-  /* 显式覆盖微信原生 button 的默认宽度，防止撑成横幅长条。 */
-  width: 80rpx !important;
+  top: 14rpx;
+  right: 22rpx;
+  width: 60rpx !important;
   min-width: 0 !important;
-  max-width: 80rpx !important;
-  height: 80rpx;
+  max-width: 60rpx !important;
+  height: 60rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -19,38 +28,14 @@ button.share-btn {
   margin: 0;
   line-height: 1;
   background: rgba(255, 255, 255, 0.94);
-  border-radius: 18rpx;
-  box-shadow: 0 2rpx 8rpx rgba(23, 78, 166, 0.1);
+  border-radius: 14rpx;
+  box-shadow: 0 2rpx 6rpx rgba(23, 78, 166, 0.08);
   box-sizing: border-box;
   overflow: hidden;
 }
-
 .share-btn::after { border: none; }
-.share-icon { width: 44rpx; height: 44rpx; }
+.share-icon { width: 32rpx; height: 32rpx; }
 .share-pressed { opacity: 0.7; }
-
-.hero-banner {
-  display: block;
-  width: calc(100% + 48rpx);
-  margin: 0 -24rpx 24rpx;
-}
-
-/* 横幅加载失败时的文字版头（兜底） */
-.hero {
-  padding: 40rpx 96rpx 28rpx 8rpx;
-}
-
-.hero-title {
-  font-size: 44rpx;
-  font-weight: 700;
-  color: #1f2430;
-}
-
-.hero-sub {
-  margin-top: 12rpx;
-  font-size: 26rpx;
-  color: #8a94a6;
-}
 
 .exam-card {
   display: flex;
