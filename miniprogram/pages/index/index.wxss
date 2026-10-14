@@ -49,6 +49,19 @@
   overflow: hidden;
 }
 
+/* 插画裁剪边缘做柔和过渡，避免右侧出现明显的竖直断层。 */
+.hero-art::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 34rpx;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(243, 248, 255, 0), #f3f8ff 88%);
+}
+
 .hero-banner {
   position: absolute;
   right: 0;
