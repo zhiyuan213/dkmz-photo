@@ -10,8 +10,8 @@
         <image class="hero-banner" src="/assets/banner-hero.jpg" mode="widthFix" binderror="onBannerError" />
       </view>
     </view>
-    <button class="share-btn" size="mini" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
-      <image class="share-icon" src="/assets/share-plane.png" mode="aspectFit" />
+    <button class="share-btn" open-type="share" aria-label="分享小程序给朋友">
+      <image class="share-icon" src="/assets/btn-friend.png" mode="aspectFit" />
     </button>
   </view>
 

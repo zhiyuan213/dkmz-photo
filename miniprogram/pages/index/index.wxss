@@ -60,24 +60,18 @@
   position: absolute;
   top: 14rpx;
   right: 16rpx;
-  width: 64rpx !important;
-  min-width: 0 !important;
-  max-width: 64rpx !important;
-  height: 64rpx;
+  width: 68rpx !important;
+  height: 68rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   margin: 0;
   line-height: 1;
-  /* 白色圆角方块 + 轻投影，和首页插画保持同一套蓝色视觉。 */
-  background: #ffffff;
-  border: 1rpx solid rgba(44, 132, 230, 0.08);
+  background: transparent;
+  border: none;
   border-radius: 16rpx;
-  box-shadow: 0 6rpx 16rpx rgba(23, 78, 166, 0.12);
-  box-sizing: border-box;
-  overflow: hidden;
-  transition: transform 0.15s ease;
+  box-shadow: none;
 }
 
 .share-btn::after {
@@ -85,13 +79,8 @@
 }
 
 .share-icon {
-  width: 32rpx;
-  height: 32rpx;
-}
-
-.share-pressed {
-  transform: scale(0.88);
-  box-shadow: 0 4rpx 10rpx rgba(23, 78, 166, 0.1);
+  width: 68rpx;
+  height: 68rpx;
 }
 
 /* ---------- 底色选择 ---------- */
