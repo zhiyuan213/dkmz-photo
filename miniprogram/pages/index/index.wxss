@@ -42,7 +42,7 @@
 .hero-art {
   position: absolute;
   /* 给右上角收藏、分享两个按钮留出完整空间。 */
-  right: 174rpx;
+  right: 134rpx;
   bottom: 0;
   width: 208rpx;
   height: 108rpx;
