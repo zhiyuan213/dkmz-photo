@@ -2,7 +2,7 @@
 """生成虚拟支付「道具管理」用的道具图片（200x200，<200KB）。
 
 用法：python tools/make_pay_icons.py
-输出：docs/pay-icons/photo1.png / photo3.png / vip1.png
+输出：docs/pay-icons/photo5.png / photo10.png（并保留旧商品图生成能力）
 """
 import os
 from PIL import Image, ImageDraw, ImageFont
@@ -38,14 +38,14 @@ def person(d, cx, cy, s, color):
 
 def badge(img, text, right=True):
     d = ImageDraw.Draw(img)
-    f = font(26)
-    tw = d.textbbox((0, 0), text, font=f)[2]
-    pad = 12
-    x1 = SIZE - 22 - tw - pad * 2 if right else 22
-    x0 = x1 if right else x1
-    box = [x0 - pad, SIZE - 64, x0 + tw + pad, SIZE - 22]
-    d.rounded_rectangle(box, radius=14, fill=WHITE)
-    d.text((box[0] + pad, SIZE - 66), text, font=f, fill=BLUE)
+    f = font(25)
+    bounds = d.textbbox((0, 0), text, font=f)
+    tw = bounds[2] - bounds[0]
+    width = tw + 24
+    x1 = SIZE - 24 if right else 24 + width
+    box = [x1 - width, 126, x1, 174]
+    d.rounded_rectangle(box, radius=15, fill=BLUE, outline=WHITE, width=3)
+    d.text(((box[0] + box[2]) / 2, 149), text, font=f, fill=WHITE, anchor="mm")
     return img
 
 
@@ -70,6 +70,27 @@ def icon_photo3():
     return badge(img, "3张")
 
 
+def icon_photo_pack(label, cards):
+    """高清导出次数包：叠放证件照卡片，右下角用大号标签区分张数。"""
+    img, d = rounded_bg(BLUE)
+    offsets = [(-18, 6), (-9, 0), (0, -6)] if cards >= 10 else [(-10, 3), (0, -3)]
+    for index, (dx, dy) in enumerate(offsets):
+        x0, y0 = 49 + dx, 34 + dy
+        fill = WHITE if index == len(offsets) - 1 else (216, 230, 255)
+        d.rounded_rectangle([x0, y0, x0 + 102, y0 + 116], radius=14, fill=fill)
+    person(d, 100, 105, 82, BLUE)
+    d.rounded_rectangle([62, 132, 138, 142], radius=5, fill=BLUE_SOFT)
+    return badge(img, label)
+
+
+def icon_photo5():
+    return icon_photo_pack("5张", 5)
+
+
+def icon_photo10():
+    return icon_photo_pack("10张", 10)
+
+
 def icon_vip():
     img, d = rounded_bg(NAVY)
     # 金色皇冠
@@ -85,7 +106,13 @@ def icon_vip():
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for name, fn in (("photo1", icon_photo1), ("photo3", icon_photo3), ("vip1", icon_vip)):
+    for name, fn in (
+        ("photo1", icon_photo1),
+        ("photo3", icon_photo3),
+        ("photo5", icon_photo5),
+        ("photo10", icon_photo10),
+        ("vip1", icon_vip),
+    ):
         p = os.path.join(OUT, name + ".png")
         img = fn()  # 保留 RGBA，圆角外透明
         img.save(p, "PNG", optimize=True)
