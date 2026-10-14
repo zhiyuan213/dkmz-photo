@@ -1,63 +1,60 @@
-/* 合规文本页公共样式（隐私政策 / 用户协议 / 关于与开源声明 @import 引用） */
+/* 合规文本页公共样式（隐私政策 / 用户协议 / 关于与开源声明 @import 引用）
+ * 字号与配色统一到 app.wxss 全局规范 */
 
 .doc {
-  padding: 32rpx 32rpx 80rpx;
+  padding: 32rpx 32rpx 64rpx;
 }
 
 .doc-title {
-  font-size: 36rpx;
+  font-size: 34rpx;
   font-weight: 700;
-  color: #1f2430;
+  line-height: 1.4;
+  color: var(--c-text);
   margin-bottom: 8rpx;
 }
 
 .doc-meta {
   font-size: 24rpx;
-  color: #8b93a1;
-  margin-bottom: 28rpx;
+  color: var(--c-text-3);
+  margin-bottom: 24rpx;
 }
 
 .doc-h {
   font-size: 30rpx;
   font-weight: 600;
-  color: #1f2430;
-  margin: 34rpx 0 12rpx;
+  line-height: 1.5;
+  color: var(--c-text);
+  margin: 32rpx 0 12rpx;
 }
 
-.doc-p {
-  font-size: 27rpx;
-  line-height: 1.78;
+.doc-p,
+.doc-li {
+  font-size: 28rpx;
+  line-height: 1.75;
   color: #3a4150;
   margin-bottom: 12rpx;
 }
 
-.doc-li {
-  font-size: 27rpx;
-  line-height: 1.78;
-  color: #3a4150;
-  margin-bottom: 10rpx;
-}
-
 .doc-strong {
   font-weight: 600;
-  color: #1f2430;
+  color: var(--c-text);
 }
 
 .doc-link {
-  color: #3b6ef6;
+  color: var(--c-blue);
 }
 
 .doc-links {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  margin-top: 40rpx;
+  margin-top: 36rpx;
   padding-top: 24rpx;
-  border-top: 1rpx solid #e6eaf2;
+  border-top: 1rpx solid var(--c-line);
 }
 
 .doc-links .doc-link {
-  font-size: 27rpx;
+  font-size: 28rpx;
   padding: 8rpx 0;
   margin-right: 8rpx;
 }
@@ -69,11 +66,12 @@
 }
 
 .doc-note {
-  margin-top: 36rpx;
+  margin-top: 28rpx;
   padding: 20rpx 22rpx;
-  background: #f4f7fd;
-  border-radius: 14rpx;
+  background: var(--c-blue-tint);
+  border: 1rpx solid var(--c-blue-line);
+  border-radius: 16rpx;
   font-size: 24rpx;
   line-height: 1.7;
-  color: #6b7688;
+  color: var(--c-text-2);
 }

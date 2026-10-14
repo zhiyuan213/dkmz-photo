@@ -6,20 +6,21 @@
       <view class="empty-title">功能调整中</view>
       <view class="empty-desc">该功能正在升级维护，请稍后再来。</view>
     </view>
-    <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+    <button class="btn ghost" bindtap="onGoHome" hover-class="btn-pressed">返回首页</button>
   </block>
 
   <block wx:else>
 
-  <!-- 权益概览 -->
+  <!-- 权益概览：免费与已购分开展示 -->
   <view class="card ent-card" wx:if="{{entitlement}}">
     <view class="ent-line">
       <text wx:if="{{entitlement.vipActive}}" class="ent-vip">会员生效中 · 至 {{entitlement.vipExpireAt}}</text>
       <text wx:else class="ent-left">剩余可导出 <text class="ent-num">{{entitlement.remaining}}</text> 张</text>
     </view>
+    <view class="ent-sub" wx:if="{{!entitlement.vipActive}}">今日免费 {{entitlement.freeQuota}} / {{entitlement.freeDailyQuota}} · 已购剩余 {{entitlement.paidQuota}} 张</view>
   </view>
 
-  <!-- 未配置云端时给出明确说明 -->
+  <!-- 未配置云端 / 加载中 / 失败 -->
   <view class="card empty" wx:if="{{!cloudEnabled}}">
     <view class="empty-title">购买服务未开通</view>
     <view class="empty-desc">当前为纯本地模式，购买功能需连接云托管后使用。</view>
@@ -34,52 +35,55 @@
     <view class="empty-desc">下拉可重试</view>
   </view>
 
-  <!-- 商品列表 -->
-  <view class="card processing-rules" wx:if="{{!configLoading}}">
-    <view class="tip-title">云端制作与保存规则</view>
-    <view class="tip-line">会员有效期内不限保存次数；云端制作受以下频率限制，普通用户与会员均适用。</view>
-    <block wx:if="{{processingLimits && processingLimits.enabled}}">
-      <view class="rule-row" wx:if="{{processingLimits.perMinute > 0}}">每分钟最多 <text class="rule-number">{{processingLimits.perMinute}}</text> 次云端制作</view>
-      <view class="rule-row" wx:if="{{processingLimits.per24Hours > 0}}">连续 24 小时最多 <text class="rule-number">{{processingLimits.per24Hours}}</text> 次云端制作</view>
-      <view class="tip-line">按请求时间滚动统计，不在午夜统一重置；达到上限后，待较早请求满 24 小时再制作。</view>
-    </block>
-    <view class="tip-line" wx:elif="{{processingLimits && !processingLimits.enabled}}">当前未启用云端制作频率限制。</view>
-    <view class="tip-line" wx:else>制作频率限制以服务端提示为准。</view>
-    <view class="tip-line">重新制作、换底等云端制作请求会计入次数，缓存命中也计入。直接保存已生成的照片不计入云端制作次数。</view>
-    <view class="tip-line">达到云端制作上限时，已有照片仍可按账户权益保存；暂时无法使用云端美肤。</view>
-  </view>
-
   <block wx:if="{{cloudEnabled && !loading && !error && goods.length > 0}}">
+
+    <!-- 商品列表：价格与张数是用户最先要看的信息 -->
     <view class="section-title">选择解锁方式</view>
 
-    <view class="card goods {{item.vip ? 'goods-vip' : ''}}" wx:for="{{goods}}" wx:key="goodsId">
+    <view class="card goods {{item.best ? 'goods-best' : ''}}" wx:for="{{goods}}" wx:key="goodsId">
       <view class="goods-head">
         <view class="goods-name">{{item.name}}</view>
-        <view class="goods-badge" wx:if="{{item.vip}}">最划算</view>
+        <view class="badge" wx:if="{{item.best}}">最划算</view>
       </view>
       <view class="goods-benefit">{{item.benefit}}</view>
       <view class="goods-foot">
         <view class="goods-price"><text class="price-symbol">¥</text>{{item.priceText}}</view>
-        <button
-          class="btn primary buy-btn"
-          size="mini"
-          disabled="{{paying}}"
-          bindtap="onBuy"
-          data-index="{{index}}"
-        >立即购买</button>
+        <button class="btn sm" disabled="{{paying}}" bindtap="onBuy" data-index="{{index}}" hover-class="btn-pressed">立即购买</button>
       </view>
     </view>
 
-    <view class="card tip-card">
-      <view class="tip-title">购买须知</view>
-      <view class="tip-line">· 高清无水印：去掉预览图上的「登科喵证件照」水印，可直接用于报名打印。</view>
-      <view class="tip-line">· 会员有效期内不限保存次数；张数包按导出次数消耗。制作免费，但云端制作受上述频率限制。</view>
-      <view class="tip-line">· 支付由微信虚拟支付完成，订单可在下方「我的订单」中查询。</view>
+    <!-- 购买须知 + 云端规则合并为一张卡，规则默认折叠 -->
+    <view class="card">
+      <view class="card-title">购买须知</view>
+      <view class="note">· 高清无水印：去掉预览图上的水印，可直接用于报名打印。</view>
+      <view class="note">· 张数包按导出次数消耗，购买后长期有效、不清零；每天另有 1 次免费导出，且优先使用免费的那 1 次。</view>
+      <view class="note">· 支付由微信虚拟支付完成，订单可在「我的订单」中查询。</view>
+
+      <view class="rule-fold" bindtap="onToggleRules">
+        <text>云端制作规则</text>
+        <text class="fold">{{showRules ? '收起 ⌃' : '展开 ⌄'}}</text>
+      </view>
+      <view class="soft-block" wx:if="{{showRules}}">
+        <view class="note">· 每天免费赠送 1 次高清导出，0 点后自动恢复；先扣免费次数，再扣已购张数。</view>
+        <view class="note" wx:if="{{processingLimits && processingLimits.enabled}}">
+          · 云端制作有频率限制<text wx:if="{{processingLimits.perMinute > 0}}">：每分钟最多 {{processingLimits.perMinute}} 次</text><text wx:if="{{processingLimits.per24Hours > 0}}">，连续 24 小时最多 {{processingLimits.per24Hours}} 次</text>（按请求时间滚动统计，非午夜统一重置）。
+        </view>
+        <view class="note" wx:elif="{{processingLimits && !processingLimits.enabled}}">· 当前未启用云端制作频率限制。</view>
+        <view class="note" wx:else>· 制作频率限制以服务端提示为准。</view>
+        <view class="note">· 重新制作、换底等云端请求都计入次数（缓存命中也计入）；直接保存已生成的照片不计入。达到上限后，已有照片仍可正常保存。</view>
+      </view>
+    </view>
+
+    <view class="foot-actions">
+      <button class="btn ghost" bindtap="onGoOrders" hover-class="btn-pressed">我的订单</button>
+      <button class="btn ghost" bindtap="onGoHome" hover-class="btn-pressed">返回首页</button>
     </view>
   </block>
 
-  <button class="btn ghost back" bindtap="onGoOrders">我的订单</button>
-  <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+  <view class="foot-actions" wx:else>
+    <button class="btn ghost" bindtap="onGoOrders" hover-class="btn-pressed">我的订单</button>
+    <button class="btn ghost" bindtap="onGoHome" hover-class="btn-pressed">返回首页</button>
+  </view>
 
   </block>
 </view>

@@ -1,34 +1,65 @@
 /**
- * 考试证件照规格库（内置版 v0.3）
+ * 证件照规格库（内置版）
  *
  * 数据源：docs/考试证件照规格库-v0.1.json（2026-10-10 核实自各考试官方公告）
  * 阶段 1 先内置随包下发；阶段 2+ 增加「云端下发 + 缓存」机制，便于紧急修正规格。
  *
  * ⚠️ 原则：宁可少一个有把握的模板，也不给一个错的规格。
  *    所有规格均须标注来源与更新时间，前端必须展示「以当次官方公告为准」的免责声明。
+ *
+ * ============================================================
+ * v0.5.0 结构升级：**去掉「考试/场景」维度**
+ *
+ * 原来用户先选「考试」再进制作页，模板库里有 7 条考试规格，颜色与尺寸各自挂在
+ * 考试下面。现在改为：用户**直接选底色 + 选尺寸**，不再有「选场景」这一步。
+ *
+ * 关键是**规格知识不能丢**。原考试库里的信息以两种方式保留下来：
+ *   ① 每个尺寸带 usedBy 场景标注（如「国考 · 教资认定 · 四六级」）——
+ *      用户选尺寸时仍能看到「这个尺寸是给谁用的」，而不是面对一串裸像素值；
+ *   ② 每个尺寸的体积上限取**原场景里最严的那个**（如一寸取国考的 20~100KB），
+ *      而不是取最宽松值 —— 宁可压得狠一点，也不能让用户因为超体积被驳回。
+ *      「规格写错会让用户报名被驳回，比不提供更糟」，这是本库的第一原则。
+ *
+ * 注意 sizeNote 是给结果页直接展示的，必须写清「这个上限是怎么来的」。
+ * ============================================================
  */
 
 const META = {
-  version: '0.4.0',
-  updatedAt: '2026-10-13',
-  disclaimer:
-    '各省、各报考点、各院校可能进一步细化要求，且逐年可能调整。本产品按官方公告预置模板，请以当次官方公告为准。',
+  version: '0.5.0',
+  updatedAt: '2026-10-14',
+  /**
+   * 结构版本：与后端 specs-seed.json 的 meta.schemaVersion 比对。
+   * 不一致时后端会做一次全量重导（见 SpecService.syncSchemaIfNeeded），
+   * 否则「库非空就跳过种子」的机制会让新结构永远进不了数据库。
+   */
+  schemaVersion: 2,
+  disclaimer: '各省、各报考点要求可能逐年调整，请以当次官方报名公告为准。',
 };
 
 /**
- * 内置背景库（云端背景全部非法时的回退源）
+ * 内置底色库（云端底色全部非法时的回退源）
  *
- * 红底（#B80202）已于 2026-10-13 随「通用一寸 · 红底」模板一起下线（v0.4.0），
- * 需要红底时先恢复模板再恢复底色，两者必须成对出现 —— 单独留一个没有模板可选，
- * 反而会因「云端底色列表」和内置库不一致而被 applyCloud 整表替换掉。
+ * 红底（#B80202）于 2026-10-13 曾随「通用一寸 · 红底」模板一起下线；
+ * 2026-10-14 结构升级去掉考试维度后**恢复**：底色不再依附于某个模板，
+ * 用户可自由组合任意底色 × 任意尺寸，红底是档案 / 党团 / 纸质材料的常见需求。
+ *
+ * ⚠️ 恢复红底时必须同步移除后端 SpecService.RETIRED_IDS 里的 "red"，
+ *    否则服务每次启动都会把红底从库里删掉，云端下发回来又变成 3 色。
  */
 const BUILTIN_BACKGROUNDS = {
   white: { id: 'white', name: '白底', hex: '#FFFFFF' },
   blue: { id: 'blue', name: '蓝底', hex: '#438EDB' },
   lightBlue: { id: 'lightBlue', name: '浅蓝底', hex: '#64C5FF' },
+  red: { id: 'red', name: '红底', hex: '#B80202' },
 };
 
+/** 底色展示顺序（BACKGROUNDS 是 map，选择器需要有序数组） */
+const BUILTIN_BG_ORDER = ['white', 'blue', 'lightBlue', 'red'];
+
 const BACKGROUNDS = Object.assign({}, BUILTIN_BACKGROUNDS);
+
+/** 底色有序列表（供底色选择器渲染） */
+let BG_ORDER = BUILTIN_BG_ORDER.slice();
 
 /** 把 BACKGROUNDS 恢复为内置库（云端数据不可用时用） */
 function seedBuiltinBackgrounds() {
@@ -36,228 +67,178 @@ function seedBuiltinBackgrounds() {
   Object.keys(BUILTIN_BACKGROUNDS).forEach((k) => {
     BACKGROUNDS[k] = Object.assign({}, BUILTIN_BACKGROUNDS[k]);
   });
+  BG_ORDER = BUILTIN_BG_ORDER.slice();
 }
 
-/** 通用预设尺寸（一寸/二寸…）。内置版为空，由云端下发填充（阶段 2） */
-const PRESETS = [];
+/** 按展示顺序返回底色数组 */
+function allBackgrounds() {
+  const list = BG_ORDER.map((id) => BACKGROUNDS[id]).filter(Boolean);
+  // 云端可能下发了顺序表里没有的底色：追加到末尾，保证不漏
+  Object.keys(BACKGROUNDS).forEach((id) => {
+    if (BG_ORDER.indexOf(id) < 0) list.push(BACKGROUNDS[id]);
+  });
+  return list;
+}
 
-const EXAMS = [
+/**
+ * 内置尺寸库。
+ *
+ * sizeRule: 'max'   只约束上限（maxSizeKB）
+ *           'range' 区间约束（minSizeKB ~ maxSizeKB）
+ *           'none'  无体积约束
+ *
+ * usedBy   : 场景标注。**这就是原考试库留下来的规格知识**，用户选尺寸时能看到
+ *           「这个尺寸是干什么用的」，不必自己判断。
+ * sizeNote : 结果页直接展示的体积说明，写清上限来源。
+ * cropFaceRatio: 构图时人脸高度占画面高度的比例（越小留白越多）。默认 0.45；
+ *           驾驶证按 GA482-2012 需要更大的头部占比，取 0.5。
+ */
+const BUILTIN_SIZES = [
   {
-    id: 'kaoyan',
-    aliases: ['考研', '硕士', '研究生', '研招', '报名照'],
-    name: '考研',
-    fullName: '硕士研究生招生考试',
-    group: '学历考试',
-    stage: '网上确认 / 准考证照片',
-    priority: 'P0',
-    backgrounds: ['white', 'blue'],
-    backgroundNote: '多数报考点要求白底，部分接受白底或蓝底',
-    image: {
-      format: ['jpg', 'jpeg'],
-      pxRule: 'ratio', // 只约束比例
-      aspectRatio: '3:4',
-      recommendPx: [480, 640],
-      sizeRule: 'max',
-      maxSizeKB: 10240,
-      sizeNote: '建议不超过 10M（各报考点表述为『建议大小不超过 10M』）',
-    },
-    portrait: {
-      headShoulderRatio: '头部和肩部占画面 2/3',
-      eyeLineTopPercent: '30%~50%',
-      angleToleranceDeg: 10,
-    },
-    notes: [
-      '近三个月内正面、免冠、无妆、彩色头像',
-      '不得佩戴眼镜、隐形眼镜、美瞳',
-      '不得 PS 修改人像特征，不得翻拍',
-      '手持身份证照需另行上传（本产品暂不支持）',
-    ],
+    id: 'one-inch',
+    name: '一寸',
+    mm: [25, 35],
+    px: [295, 413],
+    // 原场景：国考 20~100KB / 教资认定 ≤190KB / 四六级 20~200KB → 取最严 = 国考
+    sizeRule: 'range',
+    minSizeKB: 20,
+    maxSizeKB: 100,
+    sizeNote: '20~100KB（取国考最严要求，可通用于教资认定、四六级）',
+    usedBy: ['国考', '教资认定', '四六级'],
+  },
+  {
+    id: 'two-inch',
+    name: '二寸',
+    mm: [35, 49],
+    px: [413, 579],
+    sizeRule: 'max',
+    maxSizeKB: 500,
+    sizeNote: '≤500KB（通用，无官方硬性限制）',
+    usedBy: ['通用', '纸质材料'],
+  },
+  {
+    id: 'small-one-inch',
+    name: '小一寸',
+    mm: [22, 32],
+    px: [260, 378],
+    sizeRule: 'max',
+    maxSizeKB: 500,
+    sizeNote: '≤500KB（通用，无官方硬性限制）',
+    usedBy: ['通用'],
+  },
+  {
+    id: 'large-one-inch',
+    name: '大一寸',
+    mm: [33, 48],
+    px: [390, 567],
+    sizeRule: 'max',
+    maxSizeKB: 500,
+    sizeNote: '≤500KB（通用，无官方硬性限制）',
+    usedBy: ['通用'],
+  },
+  {
+    id: 'small-two-inch',
+    name: '小二寸',
+    mm: [35, 45],
+    px: [413, 531],
+    sizeRule: 'max',
+    maxSizeKB: 500,
+    sizeNote: '≤500KB（通用，无官方硬性限制）',
+    usedBy: ['通用'],
+  },
+  {
+    id: 'large-two-inch',
+    name: '大二寸',
+    mm: [35, 53],
+    px: [413, 626],
+    sizeRule: 'max',
+    maxSizeKB: 500,
+    sizeNote: '≤500KB（通用，无官方硬性限制）',
+    usedBy: ['通用'],
+  },
+  {
+    id: 'kaoyan-3-4',
+    name: '考研 3:4',
+    mm: null,
+    px: [480, 640],
+    // 原场景：考研只约束比例（3:4）与「建议不超过 10M」
+    sizeRule: 'max',
+    maxSizeKB: 10240,
+    sizeNote: '建议不超过 10M（研招网各报考点表述）',
+    usedBy: ['考研网上确认'],
   },
   {
     id: 'ntce-written',
-    aliases: ['教资', '教师资格证', '笔试', 'ntce'],
-    name: '教师资格 · 笔试报名',
-    fullName: '中小学教师资格考试（笔试报名）',
-    group: '职业资格',
-    stage: '笔试报名 · 上传照片',
-    priority: 'P0',
-    backgrounds: ['white'],
-    backgroundNote: '白色背景为佳',
-    image: {
-      format: ['jpg', 'jpeg'],
-      pxRule: 'range',
-      maxPx: [400, 600],
-      aspectRatio: '3:4',
-      recommendPx: [300, 400],
-      sizeRule: 'max',
-      maxSizeKB: 200,
-      sizeNote: '不大于 200K，压缩品质系数不低于 60',
-    },
-    portrait: {
-      headShoulderRatio: '显示头部和肩的上部',
-      eyeLineTopPercent: '眼睛距上边沿 200~300 像素（按 150×200 基准）',
-      faceWidthPx: '180~300 像素',
-      hairlineTopPx: '50~110 像素',
-    },
-    notes: [
-      '近 6 个月以内免冠正面彩色证件照',
-      '不得戴帽子、头巾、发带、墨镜',
-      '头发不得遮挡眉毛、眼睛、耳朵',
-      '不得美颜、特效、翻拍',
-      '部分省份公告给出 150×200 像素、比例约 3:4',
-    ],
-  },
-  {
-    id: 'ntce-certify',
-    aliases: ['教资', '教师资格证', '认定', '普通话'],
-    name: '教师资格 · 认定',
-    fullName: '教师资格认定申报',
-    group: '职业资格',
-    stage: '认定申报 · 上传照片',
-    priority: 'P1',
-    backgrounds: ['white'],
-    backgroundNote: '必须白底，否则不予认定通过',
-    image: {
-      format: ['jpg'],
-      pxRule: 'range',
-      minPx: [291, 409],
-      maxPx: [299, 417],
-      recommendPx: [295, 413],
-      sizeRule: 'max',
-      maxSizeKB: 190,
-      sizeNote: '小于 190K（jpeg/jpg）',
-    },
-    portrait: {
-      headShoulderRatio: '免冠正面，头部居中',
-    },
-    notes: [
-      '像素区间极窄：宽 291~299、高 409~417，务必使用推荐尺寸 295×413',
-      '体检表粘贴用的一寸照需与电子照同版',
-    ],
-  },
-  {
-    id: 'guokao',
-    aliases: ['公务员', '国考', '公考'],
-    name: '国家公务员（国考）',
-    fullName: '中央机关及其直属机构考试录用公务员',
-    group: '公职考试',
-    stage: '报名确认 · 上传照片',
-    priority: 'P0',
-    backgrounds: ['white', 'blue'],
-    backgroundNote: '蓝底或白底均可',
-    image: {
-      format: ['jpg', 'jpeg'],
-      pxRule: 'min',
-      minPx: [295, 413],
-      recommendPx: [295, 413],
-      sizeRule: 'range',
-      minSizeKB: 20,
-      maxSizeKB: 100,
-      sizeNote: '20~100KB；官方要求经『照片处理工具』处理后上传',
-    },
-    portrait: {
-      headShoulderRatio: '免冠正面证件照',
-    },
-    notes: [
-      '必须使用官方『照片处理工具』处理并保存后才能上传（本产品输出可直接尝试上传，若审核系统强校验请以官方工具为准）',
-      '照片不得美化、修饰',
-      '禁止把小像素照片放大后使用',
-    ],
-  },
-  {
-    id: 'cet',
-    aliases: ['四六级', 'cet4', 'cet6', '英语四级', '英语六级'],
-    name: '大学英语四六级',
-    fullName: '全国大学英语四、六级考试（CET）',
-    group: '学业考试',
-    stage: '报名 · 上传照片',
-    priority: 'P0',
-    backgrounds: ['white', 'lightBlue'],
-    backgroundNote: '纯白或浅蓝二选一；部分院校指定其中一种，无特殊要求优先白底',
-    image: {
-      format: ['jpg', 'jpeg'],
-      pxRule: 'exact',
-      recommendPx: [295, 413],
-      altPx: [
-        [144, 192],
-        [480, 640],
-      ],
-      aspectRatio: '2:3（295×413）',
-      sizeRule: 'range',
-      minSizeKB: 20,
-      maxSizeKB: 200,
-      sizeNote: '20KB~200KB；部分院校更严（≤100KB / ≤60KB），以本校通知为准',
-      dpi: 300,
-    },
-    portrait: {
-      headShoulderRatio: '头部（含颈部）占 7/10、肩部占 1/5',
-      topMarginRatio: '头上部空 1/10，左右各空 1/10',
-    },
-    notes: [
-      '后缀须为小写 .jpg',
-      '拍照不得化妆、美瞳、过度美颜，不得遮挡眉眼耳',
-      '部分院校要求文件以身份证号或学号命名，需按本校通知',
-    ],
+    name: '教资笔试',
+    mm: null,
+    px: [300, 400],
+    sizeRule: 'max',
+    maxSizeKB: 200,
+    sizeNote: '≤200KB，压缩品质系数不低于 60',
+    usedBy: ['教师资格笔试报名'],
   },
   {
     id: 'driving-license',
-    name: '驾驶证 / 电子驾照',
-    fullName: '机动车驾驶证（含交管12123电子驾照）',
-    group: '交通证件',
-    stage: '申领 / 换证 · 交管12123',
-    priority: 'P0',
-    backgrounds: ['white'],
-    backgroundNote: '必须白底（GA482-2012 行标）',
-    image: {
-      format: ['jpg', 'jpeg'],
-      pxRule: 'exact',
-      recommendPx: [520, 756],
-      aspectRatio: '22:32（小一寸）',
-      sizeRule: 'max',
-      maxSizeKB: 300,
-      sizeNote: '不超过 300KB（交管12123 电子驾照要求）',
-    },
-    portrait: {
-      headShoulderRatio: '头部（发顶到下巴）约占照片高度 2/3，头宽约占照片宽度 2/3',
-      cropFaceRatio: 0.5,
-    },
-    notes: [
-      '申请前 6 个月内的直边正面免冠彩色半身照（GA482-2012）',
-      '数字相片有头部尺寸校验：头宽 331~378px、头长（发顶到下巴）449~520px，制作后请以 12123 预览为准微调',
-      '不得对人像特征做技术处理、不得合成，过度美颜会被驳回',
-      '部分地区办理需『数字照片采集回执』（照相馆/检测平台出具），本产品输出不等于回执',
-      '交管12123 自带拍照功能，若本产品产出被驳回，可用 12123 内拍摄重试',
-    ],
+    name: '驾驶证',
+    mm: null,
+    px: [520, 756],
+    // GA482-2012：头部（发顶到下巴）约占照片高度 2/3 → 人脸占比取 0.5
+    sizeRule: 'max',
+    maxSizeKB: 300,
+    sizeNote: '≤300KB（交管12123 电子驾照要求）',
+    usedBy: ['驾驶证', '电子驾照'],
+    cropFaceRatio: 0.5,
+  },
+  {
+    id: 'cet-192',
+    name: '四六级小规格',
+    mm: [33, 48],
+    px: [144, 192],
+    sizeRule: 'range',
+    minSizeKB: 20,
+    maxSizeKB: 200,
+    sizeNote: '20~200KB（部分院校更严，以本校通知为准）',
+    usedBy: ['四六级'],
   },
 ];
 
+const SIZES = BUILTIN_SIZES.map((s) => Object.assign({}, s));
+
 // ------------------------------------------------------------------ 辅助函数
 
-function allExams() {
-  return EXAMS;
+function allSizes() {
+  return SIZES;
 }
 
-function getExam(id) {
-  return EXAMS.find((e) => e.id === id) || null;
+function getSize(id) {
+  return SIZES.find((s) => s.id === id) || null;
 }
 
 function getBackground(id) {
   return BACKGROUNDS[id] || BACKGROUNDS.white;
 }
 
-/** 考试的底色选项数组（供制作页选择） */
-function examBackgrounds(exam) {
-  return (exam.backgrounds || ['white']).map((id) => getBackground(id));
+/** 尺寸摘要一句话，用于选择卡片：像素 · 体积 */
+/**
+ * 尺寸摘要一行文案。
+ * @param {object} size 尺寸项
+ * @param {boolean} [compact] 紧凑模式：省略毫米尺寸（首页卡片窄，毫米属次要信息，制作页仍会展示）
+ */
+function sizeSummary(size, compact) {
+  const px = `${size.px[0]}×${size.px[1]}`;
+  let vol = '';
+  if (size.sizeRule === 'max') {
+    vol = `≤${size.maxSizeKB >= 1024 ? size.maxSizeKB / 1024 + 'M' : size.maxSizeKB + 'K'}`;
+  } else if (size.sizeRule === 'range') {
+    vol = `${size.minSizeKB}~${size.maxSizeKB}K`;
+  }
+  const mm = !compact && Array.isArray(size.mm) ? ` · ${size.mm[0]}×${size.mm[1]}mm` : '';
+  return `${px}${mm} · ${vol}`;
 }
 
-/** 规格摘要一句话，用于列表卡片 */
-function sizeSummary(exam) {
-  const img = exam.image;
-  const px = `${img.recommendPx[0]}×${img.recommendPx[1]}`;
-  let size = '';
-  if (img.sizeRule === 'max') size = `≤${img.maxSizeKB >= 1024 ? img.maxSizeKB / 1024 + 'M' : img.maxSizeKB + 'K'}`;
-  else if (img.sizeRule === 'range') size = `${img.minSizeKB}~${img.maxSizeKB}K`;
-  return `${px} · ${size}`;
+/** 场景标注一句话（卡片副标题） */
+function sizeUsage(size) {
+  return (size.usedBy || []).join(' · ');
 }
 
 // ============================================================
@@ -273,19 +254,20 @@ function sizeSummary(exam) {
 // 云端数据一律先校验格式，不合格就**不用**（宁可用旧版，也不能用坏数据）。
 // ============================================================
 
-const CACHE_KEY = 'photo_specs_cache_v1';
+// v2：结构从 exams/presets 改为 sizes，缓存键必须升版，
+// 否则老缓存（只有 exams、没有 sizes）会一直覆盖不了，拖到 TTL 才失效。
+const CACHE_KEY = 'photo_specs_cache_v2';
 const CACHE_TTL = 24 * 3600 * 1000; // 24h：超过则即使版本没变也重新拉一次（防缓存被写坏）
 
 /** 已应用的库来源：builtin / cache / cloud（「关于」页展示用） */
 const SOURCE = { value: 'builtin', version: META.version, updatedAt: META.updatedAt };
 
-/** 云端单条考试规格的格式校验：字段缺失/类型不对一律判为不合格 */
-function validExam(e) {
-  if (!e || typeof e !== 'object') return false;
-  if (!e.id || !e.name) return false;
-  const img = e.image;
-  if (!img || !Array.isArray(img.recommendPx) || img.recommendPx.length !== 2) return false;
-  if (!img.sizeRule) return false;
+/** 云端单条尺寸的格式校验：字段缺失/类型不对一律判为不合格 */
+function validSize(s) {
+  if (!s || typeof s !== 'object') return false;
+  if (!s.id || !s.name) return false;
+  if (!Array.isArray(s.px) || s.px.length !== 2) return false;
+  if (!s.sizeRule) return false;
   return true;
 }
 
@@ -314,30 +296,32 @@ function normalizeBackground(b) {
 /** 把云端下发体应用到内存（原地替换，保证其它页面已持有的引用也能生效） */
 function applyCloud(doc) {
   if (!doc || doc.ok === false) return false;
-  const exams = (Array.isArray(doc.exams) ? doc.exams : []).filter(validExam);
-  // 防御：云端考试列表为空或全部不合格时，保留内置库（否则首页会变空白）
-  if (!exams.length) {
+  const sizes = (Array.isArray(doc.sizes) ? doc.sizes : []).filter(validSize);
+  // 防御：云端尺寸列表为空或全部不合格时，保留内置库（否则首页会变空白）
+  if (!sizes.length) {
     console.warn('[photo][specs] 云端规格库无有效数据，保留现有库');
     return false;
   }
-  EXAMS.length = 0;
-  exams.forEach((e) => EXAMS.push(e));
+  SIZES.length = 0;
+  sizes.forEach((s) => SIZES.push(s));
 
   if (Array.isArray(doc.backgrounds) && doc.backgrounds.length) {
     Object.keys(BACKGROUNDS).forEach((k) => delete BACKGROUNDS[k]);
+    const order = [];
     doc.backgrounds.forEach((b) => {
       const bg = normalizeBackground(b);
-      if (bg) BACKGROUNDS[bg.id] = bg;
+      if (bg) {
+        BACKGROUNDS[bg.id] = bg;
+        order.push(bg.id);
+      }
     });
     // 防御：云端背景全部非法时回退内置库（否则底色选择区会空掉）
-    if (!Object.keys(BACKGROUNDS).length) {
+    if (!order.length) {
       console.warn('[photo][specs] 云端背景数据全部无效，回退内置背景');
       seedBuiltinBackgrounds();
+    } else {
+      BG_ORDER = order;
     }
-  }
-  if (Array.isArray(doc.presets) && doc.presets.length) {
-    PRESETS.length = 0;
-    doc.presets.forEach((p) => PRESETS.push(p));
   }
   if (doc.version) META.version = doc.version;
   if (doc.updatedAt) META.updatedAt = doc.updatedAt;
@@ -407,7 +391,7 @@ function refresh() {
       return api.fetchSpecs().then((doc) => {
         if (applyCloud(doc)) {
           saveCache(doc);
-          console.log('[photo][specs] 已更新到云端版本', doc.version, '考试数', (doc.exams || []).length);
+          console.log('[photo][specs] 已更新到云端版本', doc.version, '尺寸数', (doc.sizes || []).length);
           return { ok: true, updated: true, version: doc.version };
         }
         return { ok: false, updated: false, reason: 'INVALID_DOC' };
@@ -431,21 +415,16 @@ function sourceInfo() {
   };
 }
 
-function allPresets() {
-  return PRESETS;
-}
-
 module.exports = {
   META,
   BACKGROUNDS,
-  PRESETS,
-  EXAMS,
-  allExams,
-  allPresets,
-  getExam,
+  SIZES,
+  allBackgrounds,
+  allSizes,
+  getSize,
   getBackground,
-  examBackgrounds,
   sizeSummary,
+  sizeUsage,
   refresh,
   loadCache,
   sourceInfo,

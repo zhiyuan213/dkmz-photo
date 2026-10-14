@@ -1,86 +1,186 @@
 /*
- * 全局配色（2026-10-11 按双机设计稿采样定稿）：
- *   主蓝   #0D60F8  主按钮 / 选中态 / 强调文字 / 进行中圆点
- *   页面底 #F1F5FB  冷调浅蓝灰，与首页横幅底色 #EFF6FD 衔接
- *   浅蓝底 #E9F2FD  列表小标签；#EDF3FC 中性浅底（ghost 按钮/占位图）
- *   语义色不变：成功 #17A34A / 警告 #D97706 / 错误 #D9432F
+ * ============================================================
+ *  登科喵证件照 · 全局设计规范（唯一来源，页面不再自定义）
+ * ============================================================
+ *
+ *  一、色板（蓝色调为主）
+ *    主蓝      --c-blue       #0D60F8   主按钮 / 选中 / 强调
+ *    亮蓝      --c-blue-l     #3D8BFF   渐变亮端 / 局部点缀
+ *    浅蓝底    --c-blue-soft  #EDF3FC   ghost 按钮 / 浅底块
+ *    选中底    --c-blue-tint  #F4F8FF   选中卡片 / 浅蓝高亮
+ *    淡蓝边    --c-blue-line  #DCE8FB   浅蓝块描边
+ *    页面底    --c-bg         #F1F5FB
+ *    正文      --c-text       #1F2430
+ *    次要      --c-text-2     #5A6474
+ *    弱化      --c-text-3     #8A94A6
+ *    分割线    --c-line       #EEF1F6
+ *    语义：成功 --c-ok #17A34A / 警告 --c-warn #D97706 / 错误 --c-bad #D9432F
+ *
+ *  二、字号阶梯（只用这 6 级，禁止出现 18/19/21/23/25/27/29… 等散值）
+ *    .t-hero   34rpx  页面主标题（关于页应用名）
+ *    .t-title  30rpx  卡片标题 / 区块标题
+ *    .t-body   28rpx  正文、按钮默认
+ *    .t-sub    26rpx  次要说明、列表值
+ *    .t-cap    24rpx  提示、标签
+ *    .t-mini   22rpx  脚注、徽标
+ *
+ *  三、按钮规格（全部胶囊形，高度只有 3 档）
+ *    .btn.lg   96rpx / 字号 32rpx / 圆角 48rpx   页面主操作（首页开始制作、下单）
+ *    .btn      88rpx / 字号 30rpx / 圆角 44rpx   常规主操作（保存、购买、底部栏）
+ *    .btn.sm   68rpx / 字号 26rpx / 圆角 34rpx   卡片内联按钮（立即购买）
+ *    变体：默认=主蓝渐变实心；.ghost=浅蓝底蓝字；.line=白底描边；.danger=浅红底红字
+ *    统一：flex 居中、padding 0 36rpx、margin-top 16rpx、::after 无边框、disabled 0.55
+ *
+ *  四、间距与圆角
+ *    .page  内边距 24rpx / 底部 48rpx ；卡片间距 20rpx ；卡片内边距 28rpx
+ *    卡片圆角 20rpx ；内嵌块圆角 16rpx ；胶囊 999rpx
+ * ============================================================
  */
+
 page {
+  --c-blue: #0d60f8;
+  --c-blue-l: #3d8bff;
+  --c-blue-soft: #edf3fc;
+  --c-blue-tint: #f4f8ff;
+  --c-blue-line: #dce8fb;
+  --c-bg: #f1f5fb;
+  --c-text: #1f2430;
+  --c-text-2: #5a6474;
+  --c-text-3: #8a94a6;
+  --c-line: #eef1f6;
+  --c-ok: #17a34a;
+  --c-warn: #d97706;
+  --c-bad: #d9432f;
+
   background: #f1f5fb;
   font-size: 28rpx;
   color: #1f2430;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ---------- 字号阶梯 ---------- */
+
+.t-hero { font-size: 34rpx; font-weight: 700; line-height: 1.4; color: var(--c-text); }
+.t-title { font-size: 30rpx; font-weight: 600; line-height: 1.5; color: var(--c-text); }
+.t-body { font-size: 28rpx; line-height: 1.6; color: var(--c-text); }
+.t-sub { font-size: 26rpx; line-height: 1.6; color: var(--c-text-2); }
+.t-cap { font-size: 24rpx; line-height: 1.6; color: var(--c-text-2); }
+.t-mini { font-size: 22rpx; line-height: 1.5; color: var(--c-text-3); }
+
+/* ---------- 布局与卡片（间距按「一屏展示」收紧） ---------- */
+
 .page {
-  padding: 24rpx 24rpx 80rpx;
+  padding: 20rpx 20rpx 32rpx;
 }
 
 .card {
   background: #fff;
-  border-radius: 20rpx;
+  border-radius: 18rpx;
   padding: 24rpx;
-  margin-bottom: 24rpx;
+  margin-bottom: 16rpx;
   box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
+}
+
+.card:last-child {
+  margin-bottom: 0;
 }
 
 .card-title {
   font-size: 30rpx;
   font-weight: 600;
-  margin-bottom: 16rpx;
-  line-height: 1.5;
+  line-height: 1.4;
+  color: var(--c-text);
+  margin-bottom: 12rpx;
 }
+
+/* 卡片标题右侧可挂小标签 / 折叠开关 */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.card-title-row .card-title {
+  margin-bottom: 0;
+}
+
+/* 折叠开关文案（配合 card-title-row 使用） */
+.fold {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: var(--c-blue);
+  padding: 4rpx 0 4rpx 12rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--c-text);
+  margin: 4rpx 4rpx 12rpx;
+}
+
+/* 浅蓝信息块（规则说明、提示） */
+.soft-block {
+  background: var(--c-blue-tint);
+  border: 1rpx solid var(--c-blue-line);
+  border-radius: 16rpx;
+  padding: 16rpx 18rpx;
+}
+
+/* ---------- 键值行 ---------- */
 
 .kv {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start; /* 值折行时，标签与值第一行顶对齐 */
-  padding: 10rpx 0;
+  align-items: flex-start;
+  padding: 8rpx 0;
   font-size: 26rpx;
-  color: #5a6474;
+  line-height: 1.5;
+  color: var(--c-text-2);
 }
 
-/* 标签固定不收缩、顶对齐 */
 .kv > text:first-child {
   flex-shrink: 0;
   margin-right: 24rpx;
   line-height: 1.5;
 }
 
-/* 值最多占行宽 50%，超出即折行，右对齐 */
 .kv .v {
   flex: 1;
-  max-width: 50%;
+  max-width: 60%;
   text-align: right;
   line-height: 1.5;
-  color: #1f2430;
+  color: var(--c-text);
   font-weight: 500;
 }
 
-.ok {
-  color: #17a34a;
+/* ---------- 文案 ---------- */
+
+.hint {
+  font-size: 22rpx;
+  color: var(--c-text-2);
+  line-height: 1.65;
+  margin-top: 8rpx;
 }
 
-.bad {
-  color: #d9432f;
-}
-
-.warn {
-  color: #d97706;
+.note {
+  font-size: 24rpx;
+  color: var(--c-text-2);
+  line-height: 1.7;
 }
 
 .mono {
   font-family: Menlo, Consolas, monospace;
   font-size: 22rpx;
-  color: #5a6474;
+  color: var(--c-text-2);
   word-break: break-all;
 }
 
-.hint {
-  font-size: 24rpx;
-  color: #66738a;
-  line-height: 1.7;
-  margin-top: 10rpx;
-}
+.ok { color: var(--c-ok); }
+.bad { color: var(--c-bad); }
+.warn { color: var(--c-warn); }
 
 .warn-hint {
   background: #fff7ed;
@@ -90,67 +190,252 @@ page {
   padding: 12rpx 16rpx;
 }
 
-.btn {
-  background: #0d60f8;
-  color: #fff;
+/* ---------- 选择器滑动高亮块（首页/制作页共用，唯一来源） ----------
+ * 用法：<view class="slide-hl" style="{{xxxSlider}}">，位置尺寸由 JS 实测选中卡得出 */
+.slide-hl {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 2rpx solid var(--c-blue);
   border-radius: 16rpx;
-  font-size: 28rpx;
-  margin-top: 18rpx;
+  background: var(--c-blue-tint);
+  box-sizing: border-box;
+  box-shadow: 0 4rpx 12rpx rgba(13, 96, 248, 0.1);
+  pointer-events: none;
+  transition:
+    transform 0.32s cubic-bezier(0.34, 1.3, 0.64, 1),
+    width 0.32s ease,
+    height 0.32s ease,
+    opacity 0.2s ease;
 }
 
-.btn.ghost {
-  background: #edf3fc;
-  color: #35507a;
-}
+/* ---------- 按钮（统一规格，只有三档高度） ---------- */
 
-.btn.danger {
-  background: #fff1ef;
-  color: #d9432f;
-}
-
-.btn[disabled] {
-  opacity: 0.5;
-}
-
-.thumbs {
+button.btn,
+.btn {
   display: flex;
-  gap: 16rpx;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 88rpx;
+  padding: 0 36rpx;
+  margin: 12rpx 0 0;
+  border: none;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  line-height: 1;
+  color: #fff;
+  background: linear-gradient(135deg, #3d8bff, #0d60f8);
+  box-shadow: 0 6rpx 18rpx rgba(13, 96, 248, 0.18);
+  /* 按压时明暗/阴影过渡更顺滑（尺寸不变） */
+  transition: box-shadow 0.1s ease, background 0.1s ease, filter 0.1s ease;
 }
 
-.thumb {
+/* 按压态：长度/位置不变，靠「变暗 + 内凹阴影」表达按下去
+ * 用法：hover-class="btn-pressed"（各变体自动适配） */
+.btn-pressed {
+  filter: brightness(0.88);
+  background: linear-gradient(135deg, #2f7ae8, #0a4fd0);
+  box-shadow:
+    0 2rpx 6rpx rgba(13, 96, 248, 0.14),
+    inset 0 4rpx 12rpx rgba(0, 0, 0, 0.22);
+}
+
+/* 浅色变体：按下时底色加深一档 + 内凹阴影 */
+.btn.ghost.btn-pressed,
+button.btn.ghost.btn-pressed,
+.btn.line.btn-pressed,
+button.btn.line.btn-pressed {
+  filter: brightness(0.95);
+  background: #d7e4fa;
+  box-shadow: inset 0 4rpx 12rpx rgba(23, 78, 166, 0.16);
+}
+
+.btn.line.btn-pressed,
+button.btn.line.btn-pressed {
+  background: #e8f0ff;
+}
+
+/* 危险色：按下加深 */
+.btn.danger.btn-pressed,
+button.btn.danger.btn-pressed {
+  background: linear-gradient(135deg, #e2564f, #c4342d);
+}
+
+button.btn::after,
+.btn::after {
+  border: none;
+}
+
+.btn.lg {
+  height: 96rpx;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.btn.sm,
+button.btn.sm {
+  width: auto;
+  height: 68rpx;
+  padding: 0 34rpx;
+  margin: 0;
+  border-radius: 34rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  box-shadow: 0 4rpx 12rpx rgba(13, 96, 248, 0.16);
+}
+
+.btn.ghost,
+button.btn.ghost {
+  background: var(--c-blue-soft);
+  color: #35507a;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+/* 主色实心（.btn 默认即为主色，此类别用于显式声明语义） */
+.btn.primary,
+button.btn.primary {
+  background: linear-gradient(135deg, #3d8bff, #0d60f8);
+  color: #fff;
+}
+
+.btn.line,
+button.btn.line {
+  background: #fff;
+  color: var(--c-blue);
+  font-weight: 500;
+  border: 1rpx solid var(--c-blue-line);
+  box-shadow: none;
+}
+
+.btn.danger,
+button.btn.danger {
+  background: #fff1ef;
+  color: var(--c-bad);
+  box-shadow: none;
+}
+
+.btn[disabled],
+button.btn[disabled] {
+  opacity: 0.55;
+  color: #fff;
+}
+
+.btn.ghost[disabled],
+button.btn.ghost[disabled],
+.btn.line[disabled],
+button.btn.line[disabled] {
+  opacity: 0.5;
+  color: var(--c-text-3);
+}
+
+/* 底部固定操作栏（结果页等复用） */
+.action-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  gap: 14rpx;
+  padding: 12rpx 20rpx calc(12rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 -4rpx 16rpx rgba(23, 78, 166, 0.08);
+}
+
+.action-bar .btn {
+  height: 88rpx;
+  margin: 0;
+  border-radius: 44rpx;
+}
+
+.action-bar .btn.primary {
+  flex: 1.7;
+  background: linear-gradient(135deg, #3d8bff, #0d60f8);
+  color: #fff;
+}
+
+.action-bar .btn.ghost {
   flex: 1;
-  text-align: center;
 }
 
+/* ---------- 徽标 ---------- */
+
+.badge {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #fff;
+  background: var(--c-blue);
+  border-radius: 999rpx;
+  padding: 4rpx 18rpx;
+}
+
+.badge-soft {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: var(--c-blue);
+  background: var(--c-blue-soft);
+  border-radius: 999rpx;
+  padding: 4rpx 16rpx;
+}
+
+/* ---------- 空态 ---------- */
+
+.empty {
+  text-align: center;
+  padding: 48rpx 20rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--c-text-2);
+  line-height: 1.5;
+}
+
+.empty-desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: var(--c-text-3);
+  line-height: 1.65;
+}
+
+/* ---------- 缩略图 / 耗时表 / 日志（开发自检页复用） ---------- */
+
+.thumbs { display: flex; gap: 16rpx; }
+.thumb { flex: 1; text-align: center; }
 .thumb image {
   width: 100%;
   height: 320rpx;
-  background: #edf3fc;
+  background: var(--c-blue-soft);
   border-radius: 12rpx;
 }
-
 .thumb .cap {
   font-size: 22rpx;
-  color: #8a94a6;
+  color: var(--c-text-3);
   margin-top: 8rpx;
 }
 
 .metrics {
   margin-top: 20rpx;
-  border-top: 1rpx solid #eef0f4;
+  border-top: 1rpx solid var(--c-line);
   padding-top: 16rpx;
 }
-
 .metrics .row {
   display: flex;
   justify-content: space-between;
   padding: 8rpx 0;
   font-size: 24rpx;
-  color: #5a6474;
+  color: var(--c-text-2);
 }
-
 .metrics .row.total {
-  color: #1f2430;
+  color: var(--c-text);
   font-weight: 600;
 }
 
@@ -162,10 +447,9 @@ page {
   border-radius: 12rpx;
   padding: 16rpx;
 }
-
 .log .line {
   font-size: 22rpx;
-  color: #5a6474;
+  color: var(--c-text-2);
   line-height: 1.7;
   word-break: break-all;
 }

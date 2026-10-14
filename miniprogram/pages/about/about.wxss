@@ -1,34 +1,37 @@
-@import "../../styles/doc.wxss";
+/* 关于与开源声明：继承 doc.wxss 的正文规范，仅补充顶部品牌区 */
 
 .about-hero {
   display: flex;
   align-items: center;
-  margin-bottom: 28rpx;
+  margin-bottom: 24rpx;
 }
 
+/* 品牌徽标：与主色调一致的主蓝渐变（原红色改为蓝调） */
 .about-badge {
+  flex-shrink: 0;
   width: 88rpx;
   height: 88rpx;
-  border-radius: 22rpx;
-  background: linear-gradient(160deg, #ff5a5f, #e5323a);
-  color: #fff;
-  font-size: 30rpx;
-  font-weight: 700;
+  margin-right: 20rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 20rpx;
-  flex-shrink: 0;
+  border-radius: 22rpx;
+  background: linear-gradient(135deg, #3d8bff, #0d60f8);
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 700;
+  box-shadow: 0 6rpx 16rpx rgba(13, 96, 248, 0.24);
 }
 
 .about-name {
   font-size: 34rpx;
   font-weight: 700;
-  color: #1f2430;
+  line-height: 1.4;
+  color: var(--c-text);
 }
 
 .about-ver {
-  font-size: 24rpx;
-  color: #8b93a1;
   margin-top: 6rpx;
+  font-size: 24rpx;
+  color: var(--c-text-3);
 }

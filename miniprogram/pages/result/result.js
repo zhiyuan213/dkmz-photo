@@ -11,7 +11,8 @@ function genClientNo() {
 
 Page(config.withConfig({
   data: {
-    exam: null,
+    size: null,
+    sizeUsage: '',
     bgName: '',
     src: '',
     kb: 0,
@@ -20,11 +21,19 @@ Page(config.withConfig({
     faceFound: false,
     metrics: [],
     checks: [],
-    notes: [],
     meta: specs.META,
     saving: false,
     saved: false,
     reviewMode: config.isReviewMode(),
+    /**
+     * 权益概览（云端可用时异步拉取）。
+     * 免费与已购**分开显示**：用户需要清楚知道这次消耗的是「今天免费的 1 次」，
+     * 还是自己花钱买的张数 —— 只显示一个合计数字会让人以为免费额度被吃掉了。
+     */
+    ent: null,
+    entError: '',
+    /** 处理明细默认折叠：普通用户只关心「合格 / 保存」，耗时数据按需展开 */
+    showMetrics: false,
   },
 
   onLoad() {
@@ -34,32 +43,36 @@ Page(config.withConfig({
       setTimeout(() => wx.navigateBack(), 1200);
       return;
     }
-    const exam = specs.getExam(payload.examId);
+    const size = specs.getSize(payload.sizeId) || specs.allSizes()[0];
     const bg = specs.getBackground(payload.bgId);
     const r = payload.result;
-    const spec = exam.image;
+    const spec = size;
 
-    // 规格校验清单
+    // 规格校验清单（v0.5.0：不再按「考试」判，改按所选尺寸的体积上限判）
+    // 文案保持短句，好让整页在一屏内看完（详细体积说明见首页/制作页）
+    const kbRange = spec.sizeRule === 'range' && spec.minSizeKB
+      ? `${spec.minSizeKB}~${spec.maxSizeKB} KB`
+      : `≤${spec.maxSizeKB} KB`;
     const checks = [];
-    checks.push({ k: '像素尺寸', v: `${r.px[0]}×${r.px[1]}（推荐 ${spec.recommendPx[0]}×${spec.recommendPx[1]}）`, ok: true });
+    checks.push({ k: '像素尺寸', v: `${r.px[0]}×${r.px[1]}`, ok: true });
     checks.push({
       k: '文件体积',
-      v: `${r.kb} KB（要求：${spec.sizeNote}）`,
-      ok: r.underMin ? false : true,
+      v: `${r.kb} KB · 要求 ${kbRange}`,
+      ok: !r.underMin,
       warn: !!r.underMin,
     });
-    checks.push({ k: '底色', v: bg.name, ok: true });
-    checks.push({ k: '格式', v: 'JPG', ok: true });
+    checks.push({ k: '底色 · 格式', v: `${bg.name} · JPG`, ok: true });
     if (!r.faceFound) {
-      checks.push({ k: '人脸定位', v: '未检出人脸，已按默认构图裁剪，请检查头顶是否留白', ok: false });
+      checks.push({ k: '人脸定位', v: '未检出人脸，已按默认构图裁剪', ok: false });
     }
 
-    // 规格校验整体结论（随导出发给服务端，用于统计「哪个考试最常被判不合格」）
+    // 规格校验整体结论（随导出发给服务端，用于统计哪个尺寸最常被判不合格）
     this.specOk = checks.every((c) => c.ok);
     this._result = r;
 
     this.setData({
-      exam,
+      size,
+      sizeUsage: specs.sizeUsage(spec),
       bgName: bg.name,
       // 展示带水印预览版；高清无水印版在保存校验通过后给出
       // （备案模式不做权益校验，直接展示高清无水印图）
@@ -70,19 +83,50 @@ Page(config.withConfig({
       faceFound: r.faceFound,
       metrics: r.metrics,
       checks,
-      notes: exam.notes,
     });
+
+    this.loadEntitlement();
+  },
+
+  /** 拉取权益（免费与已购分开展示）。失败静默：不阻断导出主流程 */
+  loadEntitlement() {
+    if (config.isReviewMode() || !api.isCloudEnabled()) return;
+    api
+      .fetchEntitlement()
+      .then((res) => {
+        if (res && res.ok) {
+          this.setData({
+            ent: {
+              freeQuota: res.freeQuota,
+              freeDailyQuota: res.freeDailyQuota == null ? 1 : res.freeDailyQuota,
+              paidQuota: res.paidQuota,
+              vipActive: !!res.vipActive,
+              vipExpireAt: res.vipExpireAt,
+              remaining: res.remaining,
+            },
+            entError: '',
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('[photo][result] 权益拉取失败', err);
+        this.setData({ entError: '权益信息获取失败，保存时会重新校验' });
+      });
   },
 
   onPreview() {
     wx.previewImage({ urls: [this.data.src] });
   },
 
+  onToggleMetrics() {
+    this.setData({ showMetrics: !this.data.showMetrics });
+  },
+
   /**
    * 保存到相册。
    *
    * 导出前先向服务端「消耗一次」：
-   *   免费体验张数 / 已购张数 / 会员 → 决定能不能导出；
+   *   会员 → 当日免费 1 次 → 已购张数，依次判定；
    *   clientNo 由本页生成一次并复用 → 网络重试、用户连点都不会重复扣减（后端靠它做幂等）。
    * 云端不可用（未配环境 / 网络异常）时降级为直接保存，避免用户白做一张图。
    */
@@ -107,14 +151,20 @@ Page(config.withConfig({
     }
     this.setData({ saving: true });
     api
-      .consumeExport(this._clientNo, this.data.exam ? this.data.exam.id : '', this.specOk !== false)
+      .consumeExport(this._clientNo, this.data.size ? this.data.size.id : '', this.specOk !== false)
       .then((res) => {
         this.setData({ saving: false });
         console.log('[photo][result] 导出校验结果', res && res.ok, res && res.source, res && res.remaining);
         if (res && res.ok) {
-          if (res.source === 'paid' || res.source === 'vip') {
-            wx.showToast({ title: res.source === 'vip' ? '会员权益已使用' : '已使用 1 张', icon: 'none' });
+          // 消耗来源分开提示：让用户知道自己花掉的是哪一份
+          if (res.source === 'free') {
+            wx.showToast({ title: '已使用今日免费 1 次', icon: 'none' });
+          } else if (res.source === 'paid') {
+            wx.showToast({ title: '已使用 1 张已购次数', icon: 'none' });
+          } else if (res.source === 'vip') {
+            wx.showToast({ title: '会员权益已使用', icon: 'none' });
           }
+          this.syncEntitlement(res);
           // 权益校验通过 → 保存高清无水印版
           save(cleanPath);
           return;
@@ -139,14 +189,32 @@ Page(config.withConfig({
       });
   },
 
+  /** 用消耗接口回传的最新权益覆盖界面数字（省一次请求） */
+  syncEntitlement(res) {
+    if (res.freeQuota == null && res.paidQuota == null) return;
+    this.setData({
+      'ent.freeQuota': res.freeQuota,
+      'ent.paidQuota': res.paidQuota,
+      'ent.remaining': res.remaining,
+      'ent.vipActive': !!res.vipActive,
+      entError: '',
+    });
+  },
+
   /** 次数用完：引导购买（虚拟支付未开通时给出说明，避免用户点了没反应） */
   showQuotaExhausted() {
     const cloudReady = api.isCloudEnabled();
+    const ent = this.data.ent;
+    // 今日免费已用完是最常见的情况：明确告诉用户「明天还能免费做 1 张」，
+    // 否则用户会以为免费额度被彻底用光、再也不来了
+    const content = ent && ent.freeQuota === 0 && !ent.paidQuota
+      ? '今天的免费次数已用完，明天可再来免费制作 1 张。也可购买导出次数，立即解锁无水印高清图。'
+      : cloudReady
+      ? '可购买高清导出张数，解锁无水印高清图。'
+      : '购买功能即将开通，敬请期待。';
     wx.showModal({
       title: '导出次数已用完',
-      content: cloudReady
-        ? '可购买高清导出张数或开通会员，解锁无水印高清图。'
-        : '购买功能即将开通，敬请期待。',
+      content,
       confirmText: cloudReady ? '去购买' : '知道了',
       showCancel: false,
       success: (r) => {
@@ -186,6 +254,10 @@ Page(config.withConfig({
 
   onRemake() {
     wx.navigateBack();
+  },
+
+  onOpenBuy() {
+    wx.navigateTo({ url: '/pages/buy/buy' });
   },
 
   onHome() {

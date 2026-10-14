@@ -1,45 +1,65 @@
-<view class="page" wx:if="{{exam}}">
+<view class="page" wx:if="{{size}}">
 
-  <!-- 预览 -->
+  <!-- 预览：一屏内可见的尺寸 + 关键信息 -->
   <view class="card preview-card">
     <image class="preview" src="{{src}}" mode="widthFix" bindtap="onPreview" />
-    <view class="preview-cap">{{px}} · {{kb}}KB · {{bgName}}</view>
-    <view class="watermark-tip" wx:if="{{!reviewMode}}">预览版含水印 · 保存消耗 1 次额度，解锁高清无水印</view>
+    <view class="preview-cap">{{size.name}} · {{px}} · {{kb}}KB · {{bgName}}</view>
   </view>
 
-  <!-- 规格校验 -->
+  <!-- 规格检查：单行紧凑排布，一屏看完 -->
   <view class="card">
     <view class="card-title">规格检查</view>
-    <view class="exam-subtitle">{{exam.name}}</view>
     <view class="check" wx:for="{{checks}}" wx:key="k">
       <text class="check-icon {{item.warn ? 'warn' : item.ok ? 'ok' : 'bad'}}">{{item.warn ? '⚠' : item.ok ? '✓' : '✗'}}</text>
-      <view class="check-body">
-        <view class="check-k">{{item.k}}</view>
-        <view class="check-v">{{item.v}}</view>
-      </view>
+      <text class="check-k">{{item.k}}</text>
+      <text class="check-v">{{item.v}}</text>
     </view>
   </view>
 
-  <!-- 耗时明细 -->
-  <view class="card">
-    <view class="card-title">处理明细</view>
-    <view class="kv" wx:for="{{metrics}}" wx:key="k"><text>{{item.k}}</text><text class="v">{{item.v}}</text></view>
+  <!-- 本次消耗：免费次数与已购张数分开展示，让用户清楚花掉的是哪一份 -->
+  <view class="card" wx:if="{{!reviewMode}}">
+    <view class="card-title-row">
+      <view class="card-title">本次消耗</view>
+      <view class="fold" bindtap="onOpenBuy" wx:if="{{ent && !ent.vipActive && ent.freeQuota === 0 && !ent.paidQuota}}">去购买 ›</view>
+    </view>
+    <view class="kv" wx:if="{{ent && ent.vipActive}}">
+      <text>会员权益</text>
+      <text class="v">有效期内不限保存次数</text>
+    </view>
+    <view class="kv" wx:if="{{ent && !ent.vipActive}}">
+      <text>今日免费次数</text>
+      <text class="v">{{ent.freeQuota}} / {{ent.freeDailyQuota}}</text>
+    </view>
+    <view class="kv" wx:if="{{ent && !ent.vipActive}}">
+      <text>已购剩余张数</text>
+      <text class="v">{{ent.paidQuota}} 张</text>
+    </view>
+    <view class="hint" wx:if="{{ent && !ent.vipActive && ent.freeQuota > 0}}">保存优先扣今日免费次数，每天 0 点恢复 1 次。</view>
+    <view class="hint" wx:if="{{ent && !ent.vipActive && ent.freeQuota === 0}}">今日免费已用完（明天恢复），本次保存将消耗已购张数。</view>
+    <view class="hint" wx:if="{{entError}}">{{entError}}</view>
+    <view class="hint" wx:if="{{!ent && !entError}}">权益加载中…</view>
   </view>
 
-  <!-- 官方要求 -->
+  <!-- 处理明细：默认折叠（普通用户不关心耗时） -->
   <view class="card">
-    <view class="card-title">拍摄与提交提醒</view>
-    <view class="note" wx:for="{{notes}}" wx:key="*this">· {{item}}</view>
+    <view class="card-title-row" bindtap="onToggleMetrics">
+      <view class="card-title">处理明细</view>
+      <view class="fold">{{showMetrics ? '收起 ⌃' : '展开 ⌄'}}</view>
+    </view>
+    <view wx:if="{{showMetrics}}">
+      <view class="kv" wx:for="{{metrics}}" wx:key="k"><text>{{item.k}}</text><text class="v">{{item.v}}</text></view>
+    </view>
   </view>
 
-  <!-- 操作 -->
-  <view class="card">
-    <button class="btn big" bindtap="onSave" disabled="{{saving || saved}}">
-      {{saved ? '已保存到相册' : saving ? '保存中…' : '保存到相册'}}
+  <view class="hint page-disclaimer">{{meta.disclaimer}}</view>
+
+  <!-- 底部固定操作栏：照片在顶部也能直接保存，不用滚到最底 -->
+  <view class="action-bar">
+    <button class="btn ghost" bindtap="onHome" hover-class="btn-pressed">返回首页</button>
+    <button class="btn ghost" bindtap="onRemake" hover-class="btn-pressed">重新制作</button>
+    <button class="btn primary" bindtap="onSave" disabled="{{saving || saved}}" hover-class="btn-pressed">
+      {{saved ? '已保存' : saving ? '保存中…' : '保存到相册'}}
     </button>
-    <button class="btn ghost" bindtap="onRemake">重新制作</button>
-    <button class="btn ghost" bindtap="onHome">返回首页</button>
-    <view class="hint">{{meta.disclaimer}}</view>
   </view>
 
 </view>

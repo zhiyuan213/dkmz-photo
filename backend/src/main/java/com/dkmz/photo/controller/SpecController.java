@@ -18,15 +18,18 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 规格库接口（考试证件照规格的云端下发与后台维护）。
+ * 规格库接口（证件照底色 / 尺寸规格的云端下发与后台维护）。
  *
  *   GET  /api/photo/specs              整库下发（前端启动/下拉刷新时调用）
  *   GET  /api/photo/specs/version      只取版本号（先比版本，避免每次全量拉）
- *   GET  /api/photo/specs/{id}         单条规格（如 kaoyan / ntce-certify）
- *   GET  /api/photo/presets            通用预设（一寸/二寸…），首页「常用尺寸」用
+ *   GET  /api/photo/specs/{id}         单条规格（如 one-inch / driving-license）
+ *   GET  /api/photo/sizes              尺寸列表（底色 + 尺寸两个平铺列表里的后者）
+ *
+ * v0.5.0 结构升级：presets + exams 合并为 sizes，前端不再有「选考试」这一步，
+ * 场景信息降级为每个尺寸的 usedBy 标注（如「国考 · 教资认定 · 四六级」）。
  *
  * 管理端（需 token，参数 token=<PHOTO_JOB_TOKEN>）：
- *   POST /api/photo/admin/spec-item    单条 upsert —— 某考试改了要求时用这个，最小改动面
+ *   POST /api/photo/admin/spec-item    单条 upsert —— 某个尺寸改了要求时用这个，最小改动面
  *   POST /api/photo/admin/specs        全量覆盖导入（body 同 GET /api/photo/specs 结构）
  *   POST /api/photo/admin/reseed       重新导入内置种子（只补缺失条目，不覆盖已改条目）
  *
@@ -70,8 +73,7 @@ public class SpecController {
         out.put("disclaimer", doc.getDisclaimer());
         out.put("verifiedFrom", doc.getVerifiedFrom());
         out.put("backgrounds", doc.getBackgrounds());
-        out.put("presets", doc.getPresets());
-        out.put("exams", doc.getExams());
+        out.put("sizes", doc.getSizes());
         return out;
     }
 
@@ -96,12 +98,13 @@ public class SpecController {
         return out;
     }
 
-    @GetMapping("/presets")
-    public Map<String, Object> presets() {
+    /** 尺寸列表（前端「选尺寸」用）。原 /presets 已随 v0.5.0 结构升级合并到这里。 */
+    @GetMapping("/sizes")
+    public Map<String, Object> sizes() {
         Map<String, Object> out = new LinkedHashMap<>();
         SpecDoc doc = specService.doc();
         out.put("ok", doc != null);
-        out.put("presets", doc == null ? java.util.List.of() : doc.getPresets());
+        out.put("sizes", doc == null ? java.util.List.of() : doc.getSizes());
         return out;
     }
 
@@ -109,7 +112,7 @@ public class SpecController {
     // 管理端
     // ==========================================================
 
-    /** 单条规格 upsert（紧急修正用）：?token=xx&id=kaoyan&kind=exam&name=考研&updatedAt=2026-10-12 */
+    /** 单条规格 upsert（紧急修正用）：?token=xx&id=one-inch&kind=size&name=一寸&updatedAt=2026-10-14 */
     @PostMapping("/admin/spec-item")
     public Map<String, Object> upsertItem(@RequestParam(required = false) String token,
                                           @RequestParam(required = false) String id,

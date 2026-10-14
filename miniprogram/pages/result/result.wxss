@@ -1,94 +1,70 @@
+/* 结果页：预览 + 规格检查（单行紧凑）+ 本次消耗 + 处理明细（折叠）+ 底部固定栏
+ * 目标：主信息与「保存到相册」都在第一屏内 */
+
+.page {
+  padding-bottom: calc(136rpx + env(safe-area-inset-bottom));
+}
+
+/* ---------- 预览 ---------- */
+
 .preview-card {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 20rpx;
 }
 
-/* 预览：宽度固定、高度随图片比例自适应（widthFix）。
-   不能写死 height+aspectFit：不同规格比例不同（0.688/0.75…），留空处会露出背景色，看起来像照片带了边框 */
+/* 宽度收窄一档，保证预览 + 检查 + 底部栏同屏；比例随规格自适应 */
 .preview {
-  width: 420rpx;
-  background: #edf3fc;
-  border-radius: 16rpx;
+  width: 360rpx;
+  background: var(--c-blue-soft);
+  border-radius: 14rpx;
 }
 
 .preview-cap {
-  margin-top: 16rpx;
-  font-size: 26rpx;
-  color: #5a6474;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--c-text-2);
 }
 
-.watermark-tip {
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: #66738a;
-  line-height: 1.6;
-  text-align: center;
-}
+/* ---------- 规格检查（一行一条：✓ 项目 …… 值） ---------- */
 
 .check {
   display: flex;
   align-items: flex-start;
-  padding: 12rpx 0;
+  padding: 9rpx 0;
 }
 
 .check-icon {
-  width: 40rpx;
-  font-size: 28rpx;
+  flex-shrink: 0;
+  width: 34rpx;
+  font-size: 26rpx;
   font-weight: 700;
-}
-
-.check-icon.ok {
-  color: #17a34a;
-}
-
-.check-icon.warn {
-  color: #d97706;
-}
-
-.check-icon.bad {
-  color: #d9432f;
-}
-
-.check-body {
-  flex: 1;
-  min-width: 0;
+  line-height: 1.5;
 }
 
 .check-k {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1f2430;
+  flex-shrink: 0;
+  margin-right: 20rpx;
+  font-size: 26rpx;
+  line-height: 1.5;
+  color: var(--c-text);
 }
 
 .check-v {
-  margin-top: 4rpx;
-  font-size: 25rpx;
-  color: #66738a;
-  line-height: 1.6;
-}
-
-.note {
-  font-size: 26rpx;
-  color: #5a6474;
-  line-height: 1.8;
-  margin-bottom: 10rpx;
-}
-
-.exam-subtitle {
-  margin: -6rpx 0 20rpx;
-  font-size: 26rpx;
-  color: #66738a;
-  line-height: 1.6;
-}
-
-.kv .v {
-  max-width: 66%;
+  flex: 1;
   min-width: 0;
+  text-align: right;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--c-text-2);
   word-break: break-word;
 }
 
-.btn.big {
-  font-size: 32rpx;
-  padding: 10rpx 0;
+/* ---------- 页脚 ---------- */
+
+.page-disclaimer {
+  padding: 0 6rpx;
+  margin-top: 4rpx;
 }

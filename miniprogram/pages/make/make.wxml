@@ -1,24 +1,36 @@
-<view class="page" wx:if="{{exam}}">
+<view class="page" wx:if="{{size}}">
 
-  <!-- 考试规格 -->
+  <!-- 已选尺寸确认（只留用户真正会看的三项） -->
   <view class="card">
-    <view class="card-title">{{exam.name}}</view>
-    <view class="kv"><text>适用阶段</text><text class="v">{{exam.stage}}</text></view>
-    <view class="kv"><text>推荐尺寸</text><text class="v">{{exam.image.recommendPx[0]}} × {{exam.image.recommendPx[1]}} px</text></view>
-    <view class="kv"><text>体积要求</text><text class="v">{{exam.image.sizeNote}}</text></view>
-    <view class="kv"><text>底色说明</text><text class="v">{{exam.backgroundNote}}</text></view>
+    <view class="card-title">{{size.name}}</view>
+    <view class="kv">
+      <text>输出像素</text>
+      <text class="v">{{size.px[0]}} × {{size.px[1]}} px{{size.mm ? ' · ' + size.mm[0] + '×' + size.mm[1] + 'mm' : ''}}</text>
+    </view>
+    <view class="kv">
+      <text>体积要求</text>
+      <text class="v">{{size.sizeNote}}</text>
+    </view>
+    <view class="kv">
+      <text>适用场景</text>
+      <text class="v">{{size.usedBy}}</text>
+    </view>
   </view>
 
-  <!-- 底色选择 -->
+  <!-- 底色 -->
   <view class="card">
     <view class="card-title">底色</view>
     <view class="bg-row">
+      <!-- 滑动高亮块：与首页底色选择一致（位置由 JS 实测，样式全局唯一） -->
+      <view class="slide-hl" style="{{bgSlider}}"></view>
       <view
-        class="bg-item {{bgIndex === index ? 'active' : ''}}"
+        class="bg-item {{bgIndex === index ? 'on' : ''}}"
         wx:for="{{bgOptions}}"
         wx:key="id"
+        id="bg-{{item.id}}"
         bindtap="onBgChange"
         data-index="{{index}}"
+        hover-class="press"
       >
         <view class="bg-swatch" style="background: {{item.hex}}"></view>
         <view class="bg-name">{{item.name}}</view>
@@ -26,44 +38,46 @@
     </view>
   </view>
 
-  <!-- AI 精修：默认启用（替换背景 + 美颜），不再提供开关 -->
+  <!-- 处理方式：AI 精修策略 + 端上兜底引擎状态合并为一张卡 -->
   <view class="card">
-    <view class="card-title">AI 精修</view>
-    <view class="hint">优先使用腾讯云人像分割；美肤服务可用时，对面部皮肤做轻度提亮与磨皮。实际处理情况见制作结果。</view>
-  </view>
-
-  <!-- 引擎状态（云端可用时仅作兜底：抠图失败自动回退端上） -->
-  <view class="card">
+    <view class="card-title">处理方式</view>
     <view class="kv">
-      <text>{{cloudAvailable ? '端上兜底引擎' : '端上引擎'}}</text>
+      <text>{{cloudAvailable ? '云端精修 + 端上兜底' : '端上引擎'}}</text>
       <text class="{{modelReady ? 'ok' : modelError ? 'bad' : 'warn'}}">{{modelStateText}}</text>
     </view>
-    <view class="hint" wx:if="{{modelError}}">失败原因：{{modelError}}（点击下方按钮重试）</view>
+    <view class="hint" wx:if="{{modelError}}">失败原因：{{modelError}}，点底部按钮可重试。</view>
+    <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：本次仅在手机本地处理、不上传照片（本地链路不含美颜）。</view>
+    <view class="hint" wx:else>照片将上传腾讯云做人像分割、面部轻度提亮，并按所选底色合成后回传，仅用于生成结果。</view>
   </view>
 
-  <!-- 主操作 -->
+  <!-- 拍摄要求：默认折叠，需要时展开（避免把主操作挤出首屏） -->
   <view class="card">
-    <button class="btn big" bindtap="onPickPhoto" disabled="{{busy}}">
+    <view class="card-title-row" bindtap="onToggleNotes">
+      <view class="card-title">拍摄要求</view>
+      <view class="fold">{{showNotes ? '收起 ⌃' : '展开 ⌄'}}</view>
+    </view>
+    <view class="hint" wx:if="{{!showNotes}}">半身照、正面、露双耳额头；点「展开」看完整要求。</view>
+    <view class="soft-block" wx:if="{{showNotes}}">
+      <view class="note" wx:for="{{shootNotes}}" wx:key="*this">· {{item}}</view>
+      <view class="note" wx:if="{{size.sizeNote}}">· {{size.sizeNote}}</view>
+      <view class="note">· 建议离镜头 0.5~1 米：人脸太近会导致裁剪过满、头顶留白不足。</view>
+    </view>
+  </view>
+
+  <!-- 制作进度（仅在制作中展示） -->
+  <view class="card" wx:if="{{busy}}">
+    <view class="card-title">制作中…</view>
+    <view class="step" wx:for="{{steps}}" wx:key="key">
+      <text class="dot {{item.state}}"></text>
+      <text class="step-label {{item.state}}">{{item.label}}</text>
+    </view>
+  </view>
+
+  <!-- 底部固定主操作：不用滚到最底就能拍照 -->
+  <view class="action-bar">
+    <button class="btn primary" bindtap="onPickPhoto" disabled="{{busy}}" hover-class="btn-pressed">
       {{busy ? '制作中…' : srcPath ? '重新选照片' : '拍照 / 从相册选照片'}}
     </button>
-
-    <view class="steps" wx:if="{{busy}}">
-      <view class="step" wx:for="{{steps}}" wx:key="key">
-        <text class="dot {{item.state}}"></text>
-        <text class="step-label {{item.state}}">{{item.label}}</text>
-      </view>
-    </view>
-
-    <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：本次仅在手机本地处理、不上传照片（本地链路不含美颜）。</view>
-    <view class="hint" wx:else>照片将上传腾讯云做人像分割、面部提亮，并按所选底色合成后回传，仅用于生成结果。</view>
-    <view class="hint">建议半身照（胸像以上、离镜头 0.5~1 米）：人脸太近会导致裁剪过满、头顶留白不足。</view>
-  </view>
-
-  <!-- 规格注意事项 -->
-  <view class="card">
-    <view class="card-title">拍摄要求</view>
-    <view class="note" wx:for="{{exam.notes}}" wx:key="*this">· {{item}}</view>
-    <view class="hint">{{exam.image.sizeNote}}</view>
   </view>
 
   <!-- 内嵌相机层：默认前置摄像头，可翻转 -->

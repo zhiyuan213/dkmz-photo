@@ -45,11 +45,25 @@ public class SpecService implements ApplicationRunner {
      *
      * 为什么必须显式删：种子只在**空表**时导入，之后一律以库为准，
      * 所以「下线某个模板/底色」改种子是没用的，老数据会一直躺在下发体里。
+     *
+     * ⚠️ 2026-10-14：**"red" 已移出本名单**。红底当时是随「通用一寸 · 红底」模板
+     * 成对下线的，而现在结构升级去掉了考试/模板维度，底色不再依附于某个模板，
+     * 红底作为独立底色恢复（档案 / 党团 / 纸质材料的常见需求）。
+     * 保留在本名单里会导致服务每次启动都把红底删掉，云端下发又变回 3 色。
      */
     private static final Set<String> RETIRED_IDS = Set.of(
-            "generic-red-1inch", // 通用一寸 · 红底（2026-10-13 下线）
-            "red"                // 红底（仅被上面那个模板使用，成对下线）
+            "generic-red-1inch" // 通用一寸 · 红底（2026-10-13 下线，已被 sizes 结构取代）
     );
+
+    /**
+     * 已下线的**条目类型**（v0.5.0 结构升级）。
+     *
+     * exam / preset 两个 kind 已被 sizes 取代：原来「考试」既承载规格又承载场景，
+     * 现在拆成「底色 + 尺寸」两个平铺列表，场景信息降级为 size.usedBy 标注。
+     * 这些行不清掉的话，下发体会同时带 exams/presets/sizes 三份数据，
+     * 前端 applyCloud 只认 sizes，老数据变成死重量。
+     */
+    private static final Set<String> RETIRED_KINDS = Set.of("preset", "exam");
 
     private final PhotoSpecMapper specMapper;
     private final ObjectMapper om = new ObjectMapper();
@@ -72,11 +86,15 @@ public class SpecService implements ApplicationRunner {
             } else {
                 log.info("规格库已存在 {} 条，跳过种子导入", count);
             }
-            // 无论是否首次导入，都要做两件「必须能随包生效」的事：
+            // 无论是否首次导入，都要做这几件「必须能随包生效」的事：
             //   ① 清掉已下线条目 —— 早期种子留下的行不会自己消失
-            //   ② 用随包 meta 覆盖库里的 meta —— 前端是「先比版本号，一样就不重拉」，
+            //   ①' 清掉已下线的条目类型（exam/preset → sizes）
+            //   ② 结构版本不一致时全量重导 —— 「库非空就跳过种子」会让新结构进不来
+            //   ③ 用随包 meta 覆盖库里的 meta —— 前端是「先比版本号，一样就不重拉」，
             //      版本号若由库里的老数据决定，改了规格它也永远不会重拉
             purgeRetired();
+            purgeRetiredKinds();
+            syncSchemaIfNeeded();
             refreshMetaFromClasspath();
         } catch (Exception e) {
             // 种子失败不能影响服务启动（前端有内置兜底）
@@ -92,6 +110,43 @@ public class SpecService implements ApplicationRunner {
             }
             specMapper.deleteById(id);
             log.info("规格库已下线条目 id={}（已从库中删除）", id);
+        }
+    }
+
+    /** 删除已下线的条目类型（幂等：库里没有就跳过） */
+    private void purgeRetiredKinds() {
+        QueryWrapper<PhotoSpec> q = new QueryWrapper<PhotoSpec>().in("kind", RETIRED_KINDS);
+        Long n = specMapper.selectCount(q);
+        if (n == null || n == 0) {
+            return;
+        }
+        specMapper.delete(q);
+        log.info("规格库已清理下线类型 {} 共 {} 条（已被 sizes 结构取代）", RETIRED_KINDS, n);
+    }
+
+    /**
+     * 结构版本不一致时全量重导种子。
+     *
+     * 为什么需要它：种子只在**空表**时导入（设计如此，避免覆盖运营改过的数据），
+     * 但结构升级时老库非空 ⇒ 新的 sizes 永远进不来，前端又因为版本号没变不重拉，
+     * 结果就是「代码改了、线上没生效」。用随包 meta 的 schemaVersion 与库里比对，
+     * 不一致才做一次 overwrite=true 的全量重导 —— 结构变更本来就是有意的覆盖。
+     */
+    private void syncSchemaIfNeeded() throws Exception {
+        try (InputStream in = new ClassPathResource("specs-seed.json").getInputStream()) {
+            JsonNode root = om.readTree(in);
+            String want = root.path("meta").path("schemaVersion").asText(null);
+            if (want == null || want.isBlank()) {
+                return;
+            }
+            PhotoSpec meta = specMapper.selectById(META_ID);
+            JsonNode cur = meta == null ? null : parse(meta.getPayload());
+            String have = cur == null ? null : cur.path("schemaVersion").asText(null);
+            if (want.equals(have)) {
+                return;
+            }
+            int n = importDoc(root, true);
+            log.warn("规格库结构升级 schemaVersion {} -> {}，已全量重导 {} 条", have, want, n);
         }
     }
 
@@ -131,8 +186,8 @@ public class SpecService implements ApplicationRunner {
             n++;
         }
         n += importList(root.path("backgrounds"), "background", overwrite, false);
-        n += importList(root.path("presets"), "preset", overwrite, false);
-        n += importList(root.path("exams"), "exam", overwrite, true);
+        // v0.5.0：presets + exams 合并为 sizes（每个尺寸自带 usedBy 场景标注与体积上限）
+        n += importList(root.path("sizes"), "size", overwrite, false);
         return n;
     }
 
@@ -203,8 +258,7 @@ public class SpecService implements ApplicationRunner {
                     doc.setVerifiedFrom(from);
                 }
                 case "background" -> doc.getBackgrounds().add(node);
-                case "preset" -> doc.getPresets().add(node);
-                case "exam" -> doc.getExams().add(node);
+                case "size" -> doc.getSizes().add(node);
                 default -> log.warn("未知规格条目类型 kind={} id={}", s.getKind(), s.getId());
             }
         }
@@ -240,7 +294,7 @@ public class SpecService implements ApplicationRunner {
         PhotoSpec exists = specMapper.selectById(id);
         String kindFinal = (kind != null && !kind.isBlank())
                 ? kind
-                : (exists != null ? exists.getKind() : "exam");
+                : (exists != null ? exists.getKind() : "size");
         String nameFinal = (name != null && !name.isBlank())
                 ? name
                 : (exists != null ? exists.getName() : payload.path("name").asText(id));

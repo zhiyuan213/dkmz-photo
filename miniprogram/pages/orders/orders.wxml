@@ -5,12 +5,12 @@
     <view class="card empty">
       <view class="empty-title">暂无记录</view>
     </view>
-    <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+    <button class="btn ghost" bindtap="onGoHome" hover-class="btn-pressed">返回首页</button>
   </block>
 
   <block wx:else>
 
-  <!-- 权益概览 -->
+  <!-- 权益概览：免费次数（每日恢复）与已购张数分开展示 -->
   <view class="card ent-card" wx:if="{{entitlement}}">
     <view class="ent-row">
       <view class="ent-item">
@@ -18,8 +18,8 @@
         <view class="ent-label">{{entitlement.vipActive ? '不限保存次数' : '可用高清导出'}}</view>
       </view>
       <view class="ent-item">
-        <view class="ent-num">{{entitlement.freeQuota}}</view>
-        <view class="ent-label">免费体验剩余</view>
+        <view class="ent-num">{{entitlement.freeQuota}}/{{entitlement.freeDailyQuota}}</view>
+        <view class="ent-label">今日免费次数</view>
       </view>
       <view class="ent-item">
         <view class="ent-num">{{entitlement.paidQuota}}</view>
@@ -27,6 +27,7 @@
       </view>
     </view>
     <view class="ent-vip" wx:if="{{entitlement.vipActive}}">会员有效期至 {{entitlement.vipExpireAt}}</view>
+    <view class="ent-vip" wx:else>每天 0 点恢复 1 次免费导出；保存时优先使用免费次数，不动已购张数。</view>
   </view>
 
   <!-- 未配置云端时给出明确说明，避免用户以为「坏了」 -->
@@ -46,7 +47,7 @@
 
   <view class="card empty" wx:elif="{{orders.length === 0}}">
     <view class="empty-title">暂无订单</view>
-    <view class="empty-desc">购买高清导出或会员后，订单会显示在这里。</view>
+    <view class="empty-desc">购买高清导出次数后，订单会显示在这里。每天另有 1 次免费导出，无需购买。</view>
   </view>
 
   <!-- 订单列表 -->
@@ -73,9 +74,8 @@
   <view class="foot-note" wx:if="{{orders.length > 0}}">如有问题，请通过「关于」页的联系方式与我们联系。</view>
 
   <view class="order-actions">
-    <button class="btn back purchase" bindtap="onGoBuy" wx:if="{{cloudEnabled}}">购买导出次数 / 会员</button>
-    <button class="btn ghost back" bindtap="onGoHome">返回首页</button>
+    <button class="btn" bindtap="onGoBuy" wx:if="{{cloudEnabled}}" hover-class="btn-pressed">购买导出次数</button>
+    <button class="btn ghost" bindtap="onGoHome" hover-class="btn-pressed">返回首页</button>
   </view>
-
   </block>
 </view>

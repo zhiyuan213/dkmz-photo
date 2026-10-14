@@ -119,7 +119,7 @@ function detectFace(imgPath, width, height, opts) {
  *   alpha=0，合成时即为目标底色）；不允许底部越界（超出就整体上移）。
  *
  * @param {number} faceHeightRatio 人脸框占画面高度的目标比例（默认 0.45；
- *        个别证件如驾驶证要求头部占 2/3，可用 exam.portrait.cropFaceRatio 覆盖）
+ *        个别证件如驾驶证要求头部占 2/3，用尺寸规格里的 size.cropFaceRatio 覆盖）
  */
 function calcCropBox(face, imgWidth, imgHeight, targetRatio, faceHeightRatio) {
   const ratio = targetRatio || 3 / 4; // 宽:高

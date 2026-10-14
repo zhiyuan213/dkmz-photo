@@ -20,29 +20,48 @@
 ### GET /api/photo/specs
 整库下发。前端启动时拉取，失败则用随包内置库（三条防线：内置 → 本地缓存 → 云端）。
 
+> **v0.5.0 结构升级**：去掉了「考试（exam）」维度，`presets` + `exams` 合并为 `sizes`。
+> 用户不再先选场景，而是直接选**底色 + 尺寸**；原来挂在考试上的规格知识以
+> `size.usedBy` 场景标注的形式保留，体积上限则取原场景里**最严**的那个。
+
 ```json
 {
   "ok": true,
-  "version": "0.3.0",
-  "updatedAt": "2026-10-11",
+  "version": "0.5.0",
+  "updatedAt": "2026-10-14",
   "product": "登科喵证件照",
   "disclaimer": "各省、各报考点…请以当次官方公告为准。",
-  "verifiedFrom": ["教育部教育考试院…"],
-  "backgrounds": [{ "id": "white", "name": "白底", "hex": "#FFFFFF" }],
-  "presets": [{ "id": "1inch", "name": "一寸", "px": [295, 413] }],
-  "exams": [
+  "verifiedFrom": ["研招网 2026 年…网上确认公告"],
+  "backgrounds": [{ "id": "white", "name": "白底", "rgb": [255, 255, 255] }],
+  "sizes": [
     {
-      "id": "kaoyan",
-      "name": "考研",
-      "aliases": ["硕士", "研究生"],
-      "backgrounds": ["white", "blue"],
-      "image": { "aspectRatio": "3:4", "recommendPx": [480, 640], "sizeRule": "max", "maxSizeKB": 10240 },
-      "portrait": { "headShoulderRatio": "头部和肩部占画面 2/3" },
-      "notes": ["近三个月内正面、免冠、无妆、彩色头像"]
+      "id": "one-inch",
+      "name": "一寸",
+      "mm": [25, 35],
+      "px": [295, 413],
+      "sizeRule": "range",
+      "minSizeKB": 20,
+      "maxSizeKB": 100,
+      "sizeNote": "20~100KB（取国考最严要求，可通用于教资认定、四六级）",
+      "usedBy": ["国考", "教资认定", "四六级"]
     }
   ]
 }
 ```
+
+字段说明：
+
+| 字段 | 含义 |
+|---|---|
+| `px` | 输出像素（pipeline 直接按它裁剪导出，故结果页「像素尺寸」必然通过） |
+| `mm` | 打印毫米尺寸，可为 `null` |
+| `sizeRule` | `max` 只约束上限 / `range` 区间 / `none` 不限 |
+| `sizeNote` | 结果页直接展示的体积说明，**必须写清上限来源** |
+| `usedBy` | 场景标注（原考试库留下来的规格知识），首页尺寸卡片副标题 |
+| `cropFaceRatio` | 可选，构图时人脸占画面高度比例，默认 0.45（驾驶证为 0.5） |
+
+> ⚠️ 云端下发的底色是 `{ id, name, rgb }`，前端 `normalizeBackground` 在唯一入口把它
+> 换算成 `hex` 再进内存 —— 整条链路（色块、导出、`hexToRgb`）用的都是 hex。
 
 `ok=false, code=SPEC_EMPTY` 表示云端库为空（种子未导入成功）→ 前端用内置库。
 
@@ -50,18 +69,24 @@
 只取版本号，前端先比版本再决定要不要全量拉。
 
 ### GET /api/photo/specs/{id}
-单条规格（`kaoyan`、`ntce-certify`…），做增量刷新用。
+单条规格（`one-inch`、`driving-license`…），做增量刷新用。
 
-### GET /api/photo/presets
-通用预设尺寸列表（一寸/二寸…）。
+### GET /api/photo/sizes
+尺寸列表。原 `/api/photo/presets` 已随 v0.5.0 结构升级合并到这里。
 
 ### 管理端（需 `token=<PHOTO_JOB_TOKEN>`）
 
 | 接口 | 用途 |
 |---|---|
-| `POST /api/photo/admin/spec-item?token=&id=&kind=&name=&updatedAt=` | **单条 upsert**，body 为该条目的完整 JSON。某考试改了要求时用这个，改动面最小 |
+| `POST /api/photo/admin/spec-item?token=&id=&kind=&name=&updatedAt=` | **单条 upsert**，body 为该条目的完整 JSON（`kind` 取 `background` / `size`）。某个尺寸改了要求时用这个，改动面最小 |
 | `POST /api/photo/admin/specs?token=&overwrite=true` | 全量覆盖导入，body 结构同 `GET /api/photo/specs` |
 | `POST /api/photo/admin/reseed?token=` | 重新导入随包内置种子（**只补缺失条目**，不覆盖后台改过的） |
+
+**结构升级怎么生效**（`SpecService`）：种子只在空表时导入，所以老库非空时新结构进不去。
+启动时额外做三件事，缺一不可：
+1. `purgeRetired()` —— 删 `RETIRED_IDS` 里的行（曾用于下线红底；**红底已恢复，`"red"` 必须不在名单里**，否则每次启动都被删掉）
+2. `purgeRetiredKinds()` —— 删 `preset` / `exam` 两种旧 kind 的全部行
+3. `syncSchemaIfNeeded()` —— 随包 `meta.schemaVersion` 与库里不一致时做一次 `overwrite=true` 全量重导
 
 > 示例：教资认定改了尺寸要求
 > ```bash
@@ -77,24 +102,33 @@
 
 ### 商品配置（环境变量 `XPHOTO_GOODS`）
 
-格式 `goodsId:priceFen:quota:vipDays:name`，多项用 `;` 分隔。默认：
+格式 `goodsId:priceFen:quota:vipDays:name`，多项用 `;` 分隔。默认（2026-10-14 调价）：
 
 | goodsId | 价格 | 权益 | 说明 |
 |---|---|---|---|
-| `photo1` | ¥3.90 | 高清导出 1 张 | 单张解锁 |
-| `photo3` | ¥6.90 | 高清导出 3 张 | 规格套装 |
-| `vip1` | ¥19.90 | 会员 365 天 | 期内不限张数 |
+| `photo5` | ¥3.90 | 高清导出 5 张 | 约 ¥0.78/张 |
+| `photo10` | ¥6.90 | 高清导出 10 张 | 约 ¥0.69/张 |
+
+> 原 `photo1`（¥3.90/1 张）、`photo3`（¥6.90/3 张）已下架，`vip1` 年会员**也已下架**。
+> ⚠️ 但**后端的会员能力必须保留**（`vip_expire_at` / `addVipDays` / `reduceVipDays` /
+> `view` 的 `remaining=-1`）：已购年卡的老用户仍在有效期内，历史订单退款也要走这条路径。
+> 下架只是不再出现在 `GET /api/photo/pay/goods` 里，不是把能力删掉。
+> 同理，`pages/buy` 的 `benefitText` 与 `pages/orders` 的会员分支都保留兼容。
 
 > ⚠️ `goodsId` 与 `priceFen` 必须与 mp 后台「虚拟支付 → 道具管理」**完全一致**，否则拉起支付被微信拒绝。
+> 改 `goodsId`（`photo1`→`photo5`）时后台道具要同步新建，否则要等虚拟支付开通后一起配。
+
+> 💰 成本提醒：这个价位（¥0.69~0.78/次）对腾讯云 BDA（≈¥0.01/次）没问题，
+> 但**拍博士 API 是 ¥1/次**——若把「一次返回 8 张」这类第三方能力混进这套定价，会亏本，必须单独定价。
 
 ### GET /api/photo/pay/goods
 ```json
-{ "ok": true, "enabled": false, "goods": [{ "goodsId": "photo1", "name": "单张高清无水印导出", "priceFen": 390, "quota": 1, "vipDays": 0 }] }
+{ "ok": true, "enabled": false, "goods": [{ "goodsId": "photo5", "name": "高清导出 5 次", "priceFen": 390, "quota": 5, "vipDays": 0 }] }
 ```
 `enabled=false` 时前端隐藏购买入口（支付未开通不报错，只降级）。
 
 ### POST /api/photo/pay/order
-body：`{ "goodsId": "photo1", "code": "<wx.login 的 code>" }`
+body：`{ "goodsId": "photo5", "code": "<wx.login 的 code>" }`
 
 `code` **必需**：虚拟支付用户态签名要用 `session_key`，只能由后端用 code 走 `jscode2session` 换。
 
@@ -134,27 +168,54 @@ body：`{ "goodsId": "photo1", "code": "<wx.login 的 code>" }`
 
 ## 三、用户权益
 
-**模型：免费体验 1 张 + 已购张数（消耗型）+ 会员有效期**
+**模型：每日免费 1 张 + 已购张数（消耗型）+ 会员有效期（已下架商品，能力保留）**
 
 与「考试倒计时」的额度语义不同：那边是「可同时管理的提醒数」（删了就释放，实时计算）；
 这边导出是**一次性动作**，必须落流水 + 扣减，否则用户重装小程序就能无限导出。
 
+### 免费额度：每天 1 张（2026-10-14 变更）
+
+**原来是「一次性送 1 张」（用完永久没有），现在改为「每天送 1 张」。**
+
+实现方式是**懒发放**，不是定时任务（本服务最小实例数可设 0，没有调度器）：
+`EntitlementService.ensure()` 每次被调用时比对业务日（`Asia/Shanghai`），
+发现 `photo_free_grant.last_grant_date` 不是今天就补发一次 —— 服务整天没人访问也无所谓，
+下一个请求进来时补上。
+
+**并发安全**（两个请求同时进来只发一次）：先做条件 UPDATE
+`WHERE openid=? AND last_grant_date <> 今天`，`affected>0` 才算本次发放；
+`affected=0` 再尝试 INSERT，主键冲突 ⇒ 今天已发过。不用「先查再写」。
+
+**免费与已购分开记录**：`photo_entitlement` 里 `free_quota` 与 `paid_quota` 本就是两列，
+每日重置只写 `free_quota`，**绝不触碰 `paid_quota`**。
+
+> 为什么单独建 `photo_free_grant` 表：`schema.sql` 在服务每次启动时执行，文件开头明确禁止
+> `ALTER TABLE ADD COLUMN`（第二次启动就因「列已存在」失败，整个服务起不来），
+> 所以「给 `photo_entitlement` 加一列」这条路走不通。
+
 ### GET /api/photo/entitlement
 ```json
-{ "ok": true, "freeQuota": 1, "paidQuota": 0, "vipActive": false,
-  "vipExpireAt": null, "remaining": 1, "canExport": true }
+{ "ok": true, "freeQuota": 1, "freeDailyQuota": 1, "freeUsedToday": 0,
+  "paidQuota": 0, "vipActive": false, "vipExpireAt": null,
+  "remaining": 1, "canExport": true }
 ```
-`vipActive=true` 时 `remaining=-1` 表示不限张数。
+- `freeQuota` = **今天还剩几次免费**（0 或 1），每天 0 点后自动补回
+- `freeDailyQuota` 每日赠送额度（当前 1），前端不必硬编码
+- `freeUsedToday` 今日已用的免费次数，便于界面展示 `x / 1`
+- `vipActive=true` 时 `remaining=-1` 表示不限张数
 
 ### POST /api/photo/entitlement/consume
-body：`{ "clientNo": "E1759...", "specId": "kaoyan", "specOk": true }`
+body：`{ "clientNo": "E1759...", "specId": "one-inch", "specOk": true }`
 
 - `clientNo` 由前端一次导出动作生成一个并**复用**（重试传同一个）→ 后端 `photo_export.client_no` 唯一键保证不重复扣减
 - 返回 `ok=false, code=QUOTA_EXHAUSTED` → 前端引导购买
-- 消耗优先级：**会员 > 免费张数 > 已购张数**
+- 消耗优先级：**会员 > 当日免费 > 已购张数**（`source` 回传 `vip` / `free` / `paid`，前端据此提示用户花掉的是哪一份）
+- 返回体同时带上最新的 `freeQuota` / `paidQuota` / `remaining`，前端不必再拉一次
 
 ### POST /api/photo/pay/admin/entitlement?token=&openid=&paidQuota=&vipDays=
 管理端权益修数（客服补偿用）。`paidQuota` 直接设定张数；`vipDays` 为从现在起算的天数，`≤0` 表示清除会员。
+
+> 注意：管理端**不提供**修改 `freeQuota` 的口子 —— 它是每日派生的，手改会在下一个请求被覆盖掉。
 
 ---
 

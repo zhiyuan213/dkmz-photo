@@ -1,137 +1,280 @@
-/* 左侧使用清晰原生文字，右侧按素材原始比例完整展示插画。 */
+/* 首页：横幅 + 底色选择 + 尺寸选择（两列）+ 主操作
+ * 字号 / 按钮 / 卡片均来自 app.wxss 全局规范，这里只写页面特有的布局 */
+
+/* ---------- 顶部横幅 ---------- */
+
 .hero-wrap {
   position: relative;
-  margin: -8rpx 0 24rpx;
-  padding: 22rpx 24rpx 16rpx;
+  margin: 0 0 12rpx;
+  padding: 18rpx 22rpx 12rpx;
   overflow: hidden;
   background: linear-gradient(135deg, #eaf4ff, #f3f8ff);
-  border-radius: 18rpx;
+  border-radius: 20rpx;
 }
-.hero-main { position: relative; height: 154rpx; }
-.hero-copy { position: relative; z-index: 1; padding-top: 20rpx; width: 448rpx; }
-.hero-title { white-space: nowrap; font-size: 34rpx; line-height: 1.5; font-weight: 700; color: #18345c; }
-.hero-sub { margin-top: 9rpx; font-size: 23rpx; line-height: 1.6; color: #617591; }
-.hero-art { position: absolute; right: 6rpx; bottom: 0; width: 280rpx; height: 154rpx; overflow: hidden; }
-.hero-banner { position: absolute; right: 0; bottom: 0; width: 700rpx; display: block; }
-.hero-features { display: flex; gap: 8rpx; padding-top: 12rpx; border-top: 1rpx solid #d9e7f7; }
-.hero-features text { flex: 1; text-align: center; font-size: 22rpx; line-height: 1.6; color: #476789; }
-button.share-btn {
+
+.hero-main {
+  position: relative;
+  height: 116rpx;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  padding-top: 14rpx;
+  width: 430rpx;
+}
+
+.hero-title {
+  white-space: nowrap;
+  font-size: 32rpx;
+  line-height: 1.4;
+  font-weight: 700;
+  color: #18345c;
+}
+
+.hero-sub {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #617591;
+}
+
+.hero-art {
   position: absolute;
-  top: 12rpx;
+  right: 6rpx;
+  bottom: 0;
+  width: 216rpx;
+  height: 116rpx;
+  overflow: hidden;
+}
+
+.hero-banner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 520rpx;
+  display: block;
+}
+
+.share-btn {
+  position: absolute;
+  top: 14rpx;
   right: 16rpx;
-  width: 48rpx !important;
+  width: 68rpx !important;
   min-width: 0 !important;
-  max-width: 48rpx !important;
-  height: 48rpx;
+  max-width: 68rpx !important;
+  height: 68rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   margin: 0;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 12rpx;
-  box-shadow: 0 2rpx 6rpx rgba(23, 78, 166, 0.08);
+  /* 对齐参考图：更圆的圆角 + 更轻的投影 + 图标占比约 40% */
+  background: #ffffff;
+  border-radius: 26rpx;
+  box-shadow: 0 8rpx 20rpx rgba(23, 78, 166, 0.1);
   box-sizing: border-box;
   overflow: hidden;
+  transition: transform 0.15s ease;
 }
-.share-btn::after { border: none; }
-.share-icon { width: 26rpx; height: 26rpx; }
-.share-pressed { opacity: 0.7; }
 
-.exam-card {
+.share-btn::after {
+  border: none;
+}
+
+.share-icon {
+  /* 参考图比例：图标约占按钮宽度一半 */
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.share-pressed {
+  transform: scale(0.88);
+  box-shadow: 0 4rpx 10rpx rgba(23, 78, 166, 0.1);
+}
+
+/* ---------- 底色选择 ---------- */
+
+.color-row {
+  position: relative;
   display: flex;
-  align-items: center;
-  background: #fff;
-  border-radius: 20rpx;
-  padding: 28rpx 24rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
+  gap: 16rpx;
 }
 
-.exam-card.press {
-  opacity: 0.75;
-}
+/* 滑动高亮块样式在 app.wxss 的 .slide-hl（全局唯一来源） */
 
-.exam-main {
+.color-item {
   flex: 1;
-  min-width: 0;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12rpx 0 10rpx;
+  /* 与尺寸卡一致：每张卡自己的浅灰描边 */
+  border: 2rpx solid var(--c-line);
+  border-radius: 16rpx;
+  transition: transform 0.2s ease;
 }
 
-.exam-name {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #1f2430;
-  line-height: 1.5;
+.color-item.press {
+  transform: scale(0.94);
 }
 
-.exam-stage {
-  margin-top: 6rpx;
+/* 选中态由下层滑动高亮块描边；隐藏卡片自身灰边，避免盖住蓝色选中框。 */
+.color-item.on {
+  border-color: transparent;
+}
+
+.color-dot {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  border: 1rpx solid #e2e7ef;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 选中的色点放大一档并带阴影，像被「按亮」 */
+.color-item.on .color-dot {
+  transform: scale(1.12);
+  box-shadow: 0 4rpx 10rpx rgba(23, 78, 166, 0.18);
+}
+
+.color-name {
+  margin-top: 8rpx;
   font-size: 24rpx;
-  color: #66738a;
-  line-height: 1.6;
+  line-height: 1.5;
+  color: var(--c-text-2);
+  transition: color 0.2s ease;
 }
 
-.exam-meta {
-  margin-top: 14rpx;
+.color-item.on .color-name {
+  color: var(--c-blue);
+  font-weight: 600;
+}
+
+/* ---------- 尺寸选择（两列网格） ---------- */
+
+.size-grid {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
 }
 
-.chip {
-  font-size: 22rpx;
-  color: #2e7cf6;
-  background: #e9f2fd;
-  border-radius: 8rpx;
-  padding: 4rpx 12rpx;
+/* 滑动高亮块样式在 app.wxss 的 .slide-hl（全局唯一来源） */
+
+.size-card {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: calc((100% - 12rpx) / 2);
+  /* 所有卡都带场景标注后，内边距收紧补偿外框高度 */
+  padding: 8rpx 12rpx;
+  border: 2rpx solid var(--c-line);
+  border-radius: 16rpx;
 }
 
-.arrow {
-  color: #c3cad4;
-  font-size: 40rpx;
-  margin-left: 12rpx;
+/* 选中态由滑块表达，卡片自身边框透明（保持盒尺寸不变，避免文字跳动） */
+.size-card.on {
+  border-color: transparent;
 }
 
-.empty {
+.size-card.press {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.size-usage {
+  font-size: 19rpx;
+  line-height: 1.4;
+  color: var(--c-blue);
+}
+
+/* ---------- 动效关键帧 ---------- */
+
+@keyframes check-pop {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.size-name {
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--c-text);
+  padding-right: 40rpx;
+}
+
+.size-usage {
+  margin-top: 2rpx;
+  font-size: 19rpx;
+  line-height: 1.4;
+  color: var(--c-blue);
+}
+
+.size-summary {
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  line-height: 1.35;
+  color: var(--c-text-3);
+}
+
+.size-check {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  width: 32rpx;
+  height: 32rpx;
+  line-height: 32rpx;
   text-align: center;
-  color: #8a94a6;
-  font-size: 26rpx;
-  padding: 60rpx 0;
+  border-radius: 50%;
+  background: var(--c-blue);
+  color: #fff;
+  font-size: 20rpx;
+  /* 勾标从小弹到大，带一点过冲 */
+  animation: check-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ---------- 主操作 ---------- */
+
+.start-bar {
+  margin-top: 16rpx;
+}
+
+/* 按压态统一在 app.wxss 的 .btn-pressed 定义 */
+
+/* ---------- 页脚 ---------- */
 
 .footer {
-  margin-top: 40rpx;
-  padding: 0 8rpx 20rpx;
+  margin-top: 16rpx;
+  padding: 0 6rpx;
 }
 
 .footer-meta {
   font-size: 22rpx;
-  color: #8a94a6;
-}
-
-.footer-disclaimer {
-  margin-top: 10rpx;
-  font-size: 22rpx;
-  color: #a8b0bd;
   line-height: 1.6;
-}
-
-.footer-lab {
-  margin-top: 24rpx;
-  font-size: 24rpx;
-  color: #9aa7d8;
+  color: var(--c-text-3);
   text-align: center;
 }
 
-/* 页脚：我的订单与权益入口 */
+.footer-disclaimer {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #a8b0bd;
+  text-align: center;
+}
+
 .footer-orders {
-  margin-top: 20rpx;
+  margin-top: 12rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 25rpx;
-  color: #0d60f8;
+  font-size: 24rpx;
+  color: var(--c-blue);
 }
 
 .footer-orders-arrow {
@@ -139,9 +282,8 @@ button.share-btn {
   color: #a9c3f0;
 }
 
-/* 页脚合规入口：关于 / 隐私政策 / 用户协议 */
 .footer-links {
-  margin-top: 16rpx;
+  margin-top: 8rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -150,12 +292,19 @@ button.share-btn {
 
 .footer-link {
   font-size: 24rpx;
+  padding: 4rpx 0;
   color: #5b8df0;
-  padding: 6rpx 0;
 }
 
 .footer-link-sep {
   font-size: 22rpx;
   color: #c6ccd8;
-  margin: 0 14rpx;
+  margin: 0 12rpx;
+}
+
+.footer-lab {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  text-align: center;
+  color: #9aa7d8;
 }

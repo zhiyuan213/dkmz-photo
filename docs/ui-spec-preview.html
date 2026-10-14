@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>登科喵证件照 · UI 规范与页面预览</title>
+<style>
+  :root{
+    --c-blue:#0d60f8; --c-blue-l:#3d8bff; --c-blue-soft:#edf3fc; --c-blue-tint:#f4f8ff; --c-blue-line:#dce8fb;
+    --c-bg:#f1f5fb; --c-text:#1f2430; --c-text-2:#5a6474; --c-text-3:#8a94a6; --c-line:#eef1f6;
+    --c-ok:#17a34a; --c-warn:#d97706; --c-bad:#d9432f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:#f6f8fc;color:var(--c-text);padding:32px 28px 72px;-webkit-font-smoothing:antialiased;
+  }
+  h1{font-size:22px;font-weight:700;letter-spacing:.5px}
+  .sub{margin-top:6px;font-size:13px;color:var(--c-text-2)}
+  .wrap{max-width:1180px;margin:0 auto}
+  section{margin-top:34px}
+  .sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+  .sec-h h2{font-size:16px;font-weight:700}
+  .sec-h span{font-size:12px;color:var(--c-text-3)}
+  .panel{background:#fff;border-radius:16px;padding:20px 22px;box-shadow:0 2px 12px rgba(23,78,166,.06)}
+
+  /* 色板 */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .sw{border-radius:12px;overflow:hidden;border:1px solid var(--c-line)}
+  .sw .chip{height:56px}
+  .sw .meta{padding:8px 10px;font-size:11px;line-height:1.5;color:var(--c-text-2);background:#fff}
+  .sw .meta b{display:block;font-size:12px;color:var(--c-text);font-weight:600}
+
+  /* 字号 */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--c-line);vertical-align:middle}
+  th{font-size:12px;font-weight:600;color:var(--c-text-3);background:#fafbfe}
+  code{font-family:Menlo,Consolas,monospace;font-size:12px;background:var(--c-blue-soft);color:#35507a;padding:1px 6px;border-radius:5px}
+
+  /* 按钮 */
+  .btnrow{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:14px}
+  .btn{
+    display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;height:88px;
+    padding:0 36px;border:none;border-radius:44px;font-size:30px;font-weight:500;line-height:1;
+    color:#fff;background:linear-gradient(135deg,var(--c-blue-l),var(--c-blue));box-shadow:0 6px 18px rgba(13,96,248,.18);
+    font-family:inherit;cursor:default;
+  }
+  .btn.lg{height:96px;border-radius:48px;font-size:32px;font-weight:600}
+  .btn.sm{width:auto;height:68px;padding:0 34px;border-radius:34px;font-size:26px;font-weight:600;box-shadow:0 4px 12px rgba(13,96,248,.16)}
+  .btn.ghost{background:var(--c-blue-soft);color:#35507a;font-weight:500;box-shadow:none}
+  .btn.line{background:#fff;color:var(--c-blue);border:1px solid var(--c-blue-line);font-weight:500;box-shadow:none}
+  .btn.danger{background:#fff1ef;color:var(--c-bad);box-shadow:none}
+  .btn[disabled]{opacity:.55}
+  .btn.fixed{width:220px}
+  .spec{font-size:11px;color:var(--c-text-3);text-align:center;margin-top:4px}
+
+  /* 手机示意 */
+  .phones{display:flex;gap:22px;flex-wrap:wrap}
+  .phone{width:320px;background:var(--c-bg);border-radius:26px;padding:14px;box-shadow:0 8px 26px rgba(23,78,166,.10);border:1px solid #e4eaf5}
+  .phone .name{font-size:12px;font-weight:600;color:var(--c-text-2);margin:0 0 10px 4px}
+  .card{background:#fff;border-radius:18px;padding:12px;margin-bottom:8px;box-shadow:0 2px 12px rgba(23,78,166,.06)}
+  .card-title{font-size:15px;font-weight:600;line-height:1.4;margin-bottom:6px}
+  .t-sub{font-size:13px;color:var(--c-text-2);line-height:1.6}
+  .t-cap{font-size:12px;color:var(--c-text-2);line-height:1.6}
+  .t-mini{font-size:11px;color:var(--c-text-3);line-height:1.5}
+  .kv{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:var(--c-text-2)}
+  .kv .v{color:var(--c-text);font-weight:500;max-width:62%;text-align:right}
+  .hero{border-radius:20px;padding:14px 16px 10px;background:linear-gradient(135deg,#eaf4ff,#f3f8ff);margin-bottom:10px}
+  .hero h3{font-size:16px;font-weight:700;color:#18345c}
+  .hero p{margin-top:4px;font-size:12px;color:#617591}
+  .hero .feat{display:flex;gap:6px;margin-top:9px;padding-top:8px;border-top:1px solid #d9e7f7}
+  .hero .feat span{flex:1;text-align:center;font-size:11px;color:#476789}
+  .grid2{display:flex;flex-wrap:wrap;gap:7px}
+  .s-card{position:relative;width:calc((100% - 7px)/2);padding:7px 8px;border:2px solid var(--c-line);border-radius:16px}
+  .s-card.on{border-color:var(--c-blue);background:var(--c-blue-tint)}
+  .s-card .nm{font-size:13.5px;font-weight:600;line-height:1.4;padding-right:20px}
+  .s-card .us{margin-top:1px;font-size:11px;color:var(--c-blue);line-height:1.5}
+  .s-card .sm{margin-top:1px;font-size:11px;color:var(--c-text-3);line-height:1.5}
+  .s-card .ck{position:absolute;top:6px;right:6px;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:var(--c-blue);color:#fff;font-size:10px}
+  .color-row{display:flex;gap:7px}
+  .color-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 0 5px;border:2px solid var(--c-line);border-radius:14px}
+  .color-item.on{border-color:var(--c-blue);background:var(--c-blue-tint)}
+  .dot{width:24px;height:24px;border-radius:50%;border:1px solid #e2e7ef}
+  .color-name{margin-top:3px;font-size:12px;color:var(--c-text-2)}
+  .color-item.on .color-name{color:var(--c-blue);font-weight:500}
+  .check{display:flex;gap:8px;align-items:flex-start;padding:6px 0}
+  .check .ic{width:20px;font-size:14px;font-weight:700;flex-shrink:0}
+  .check .k{font-size:14px;font-weight:600;line-height:1.5}
+  .check .v{margin-top:1px;font-size:12px;color:var(--c-text-2);line-height:1.6}
+  .bar{display:flex;gap:7px;margin-top:10px;padding-top:10px;border-top:1px dashed #dbe4f2}
+  .bar .btn{height:44px;border-radius:22px;font-size:15px}
+  .bar .btn.ghost{flex:1}
+  .bar .btn.primary{flex:1.7}
+  .empty{text-align:center;padding:32px 12px}
+  .empty-title{font-size:15px;font-weight:600;color:var(--c-text-2)}
+  .empty-desc{margin-top:6px;font-size:12px;color:var(--c-text-3);line-height:1.7}
+  .goods-best{border:2px solid var(--c-blue);background:var(--c-blue-tint)}
+  .goods-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .goods-name{font-size:16px;font-weight:600;line-height:1.5}
+  .badge{flex-shrink:0;font-size:11px;line-height:1.4;color:#fff;background:var(--c-blue);border-radius:999px;padding:2px 9px}
+  .goods-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+  .price{font-size:20px;font-weight:700;color:var(--c-blue);line-height:1.2}
+  .price i{font-size:13px;font-style:normal;margin-right:1px}
+  .soft{background:var(--c-blue-tint);border:1px solid var(--c-blue-line);border-radius:16px;padding:10px 11px}
+  .soft .note{font-size:12px;line-height:1.7;color:var(--c-text-2)}
+  .soft .note + .note{margin-top:4px}
+  .foot{margin-top:10px;text-align:center;font-size:11px;color:var(--c-text-3);line-height:1.7}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--c-text-2);margin-top:10px}
+  .legend b{color:var(--c-text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>登科喵证件照 · UI 规范与页面预览</h1>
+  <div class="sub">一套 token 全局生效：色板 / 字号 6 级 / 按钮 3 档 · 卡片与间距统一收紧，主操作固定在首屏可达</div>
+
+  <section>
+    <div class="sec-h"><h2>一、色板（蓝色调为主）</h2><span>app.wxss → page 上的 CSS 变量</span></div>
+    <div class="panel">
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#0d60f8"></div><div class="meta"><b>主蓝</b>#0D60F8 · 主按钮/选中</div></div>
+        <div class="sw"><div class="chip" style="background:#3d8bff"></div><div class="meta"><b>亮蓝</b>#3D8BFF · 渐变亮端</div></div>
+        <div class="sw"><div class="chip" style="background:#edf3fc"></div><div class="meta"><b>浅蓝底</b>#EDF3FC · ghost 按钮</div></div>
+        <div class="sw"><div class="chip" style="background:#f4f8ff"></div><div class="meta"><b>选中底</b>#F4F8FF · 浅蓝高亮</div></div>
+        <div class="sw"><div class="chip" style="background:#dce8fb"></div><div class="meta"><b>淡蓝边</b>#DCE8FB · 块描边</div></div>
+        <div class="sw"><div class="chip" style="background:#f1f5fb"></div><div class="meta"><b>页面底</b>#F1F5FB</div></div>
+        <div class="sw"><div class="chip" style="background:#1f2430"></div><div class="meta"><b>正文</b>#1F2430</div></div>
+        <div class="sw"><div class="chip" style="background:#5a6474"></div><div class="meta"><b>次要</b>#5A6474</div></div>
+        <div class="sw"><div class="chip" style="background:#8a94a6"></div><div class="meta"><b>弱化</b>#8A94A6</div></div>
+        <div class="sw"><div class="chip" style="background:#17a34a"></div><div class="meta"><b>成功</b>#17A34A</div></div>
+        <div class="sw"><div class="chip" style="background:#d97706"></div><div class="meta"><b>警告</b>#D97706</div></div>
+        <div class="sw"><div class="chip" style="background:#d9432f"></div><div class="meta"><b>错误</b>#D9432F</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>二、字号阶梯（只有 6 级）</h2><span>原来散落 18/19/21/23/25/27/29/31/33… 全部收敛</span></div>
+    <div class="panel">
+      <table>
+        <tr><th style="width:130px">类名</th><th style="width:90px">字号</th><th style="width:70px">字重</th><th>用途</th></tr>
+        <tr><td><code>.t-hero</code></td><td>34rpx</td><td>700</td><td>页面主标题（关于页应用名）</td></tr>
+        <tr><td><code>.t-title</code></td><td>30rpx</td><td>600</td><td>卡片标题 / 区块标题</td></tr>
+        <tr><td><code>.t-body</code></td><td>28rpx</td><td>400</td><td>正文、按钮默认字号</td></tr>
+        <tr><td><code>.t-sub</code></td><td>26rpx</td><td>400</td><td>次要说明、列表值</td></tr>
+        <tr><td><code>.t-cap</code></td><td>24rpx</td><td>400</td><td>提示、标签</td></tr>
+        <tr><td><code>.t-mini</code></td><td>22rpx</td><td>400</td><td>脚注、徽标（最小字号）</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>三、按钮规格（高度只有 3 档，全部胶囊）</h2><span>原来 72/76/82/88/92/96rpx 六种高度 → 统一为 96 / 88 / 68</span></div>
+    <div class="panel">
+      <div class="btnrow">
+        <div><div class="btn lg fixed">开始制作</div><div class="spec">.btn.lg · 96rpx / 32rpx / 圆角48</div></div>
+        <div><div class="btn fixed">保存到相册</div><div class="spec">.btn · 88rpx / 30rpx / 圆角44</div></div>
+        <div><div class="btn sm">立即购买</div><div class="spec">.btn.sm · 68rpx / 26rpx / 圆角34</div></div>
+      </div>
+      <div class="btnrow">
+        <div><div class="btn ghost fixed">返回首页</div><div class="spec">.btn.ghost 浅蓝底</div></div>
+        <div><div class="btn line fixed">重新选照片</div><div class="spec">.btn.line 白底描边</div></div>
+        <div><div class="btn danger fixed">删除</div><div class="spec">.btn.danger 危险</div></div>
+        <div><div class="btn fixed" disabled>已保存</div><div class="spec">[disabled] 0.55</div></div>
+      </div>
+      <div class="legend">
+        <span>统一规则：<b>flex 居中</b> · padding 0 36rpx · margin-top 16rpx · ::after 无边框 · width 100%</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>四、页面示意</h2><span>同一套 token 渲染，视角比例约为真机的 0.62</span></div>
+    <div class="phones">
+
+      <!-- 首页 -->
+      <div class="phone">
+        <div class="name">首页 · 两列尺寸 + 底部主操作</div>
+        <div class="hero">
+          <h3>证件照，3分钟搞定</h3>
+          <p>选底色 · 选尺寸 · 自动裁剪换底</p>
+        </div>
+        <div class="card">
+          <div class="card-title">选择底色</div>
+          <div class="color-row">
+            <div class="color-item on"><div class="dot" style="background:#fff"></div><div class="color-name">白底</div></div>
+            <div class="color-item"><div class="dot" style="background:#438edb"></div><div class="color-name">蓝底</div></div>
+            <div class="color-item"><div class="dot" style="background:#b80202"></div><div class="color-name">红底</div></div>
+            <div class="color-item"><div class="dot" style="background:#e6f0fa"></div><div class="color-name">浅蓝</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">选择尺寸</div>
+          <div class="grid2">
+            <div class="s-card on"><div class="ck">✓</div><div class="nm">一寸</div><div class="sm">295×413 · 20~100K</div><div class="us">国考 · 教资认定 · 四六级</div></div>
+            <div class="s-card"><div class="nm">二寸</div><div class="sm">413×579 · ≤500K</div></div>
+            <div class="s-card"><div class="nm">小一寸</div><div class="sm">260×378 · ≤500K</div></div>
+            <div class="s-card"><div class="nm">大一寸</div><div class="sm">390×567 · ≤500K</div></div>
+          </div>
+        </div>
+        <div class="btn lg">开始制作</div>
+        <div class="foot">规格库 v0.5.0 · 更新于 2026-10-14｜以当次官方公告为准</div>
+      </div>
+
+      <!-- 结果页 -->
+      <div class="phone">
+        <div class="name">结果页 · 规格检查 + 底部固定操作栏</div>
+        <div class="card" style="text-align:center">
+          <div style="width:150px;height:210px;margin:0 auto;background:linear-gradient(160deg,#dfe9f7,#cdd9ec);border-radius:10px"></div>
+          <div class="t-sub" style="margin-top:8px">一寸 · 295×413 · 22KB · 白底</div>
+          <div class="t-cap" style="text-align:center;margin-top:2px">点预览可放大查看；保存消耗 1 次额度</div>
+        </div>
+        <div class="card">
+          <div class="card-title">规格检查</div>
+          <div class="kv"><span style="display:flex;gap:8px"><b style="color:var(--c-ok)">✓</b><span>像素尺寸</span></span><span class="v">295×413</span></div>
+          <div class="kv"><span style="display:flex;gap:8px"><b style="color:var(--c-ok)">✓</b><span>文件体积</span></span><span class="v">22 KB · 要求 20~100 KB</span></div>
+          <div class="kv"><span style="display:flex;gap:8px"><b style="color:var(--c-ok)">✓</b><span>底色 · 格式</span></span><span class="v">白底 · JPG</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">本次消耗</div>
+          <div class="kv"><span>今日免费次数</span><span class="v">1 / 1</span></div>
+          <div class="kv"><span>已购剩余张数</span><span class="v">5 张</span></div>
+        </div>
+        <div class="card">
+          <div class="goods-head"><div class="card-title" style="margin:0">处理明细</div><span class="t-cap" style="color:var(--c-blue)">展开 ⌄</span></div>
+        </div>
+        <div class="bar">
+          <div class="btn ghost">返回首页</div>
+          <div class="btn ghost">重新制作</div>
+          <div class="btn primary">保存到相册</div>
+        </div>
+      </div>
+
+      <!-- 购买页 -->
+      <div class="phone">
+        <div class="name">购买页 · 先看价格，规则收到底部</div>
+        <div class="card">
+          <div class="t-sub">剩余可导出 <b style="font-size:22px;color:var(--c-blue)">1</b> 张</div>
+          <div class="t-cap" style="color:var(--c-text-3);margin-top:4px">今日免费 1 / 1 · 已购剩余 0 张</div>
+        </div>
+        <div style="font-size:15px;font-weight:600;margin:2px 4px 8px">选择解锁方式</div>
+        <div class="card">
+          <div class="goods-head"><div class="goods-name">高清导出 5 次</div></div>
+          <div class="t-sub" style="margin-top:4px">5 张高清无水印导出 · 约 ¥0.78/张</div>
+          <div class="goods-foot"><div class="price"><i>¥</i>3.90</div><div class="btn sm">立即购买</div></div>
+        </div>
+        <div class="card goods-best">
+          <div class="goods-head"><div class="goods-name">高清导出 10 次</div><div class="badge">最划算</div></div>
+          <div class="t-sub" style="margin-top:4px">10 张高清无水印导出 · 约 ¥0.69/张</div>
+          <div class="goods-foot"><div class="price"><i>¥</i>6.90</div><div class="btn sm">立即购买</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">云端制作规则</div>
+          <div class="soft">
+            <div class="note">· 每天免费赠送 1 次高清导出，0 点后自动恢复；先扣免费次数，再扣已购张数。</div>
+            <div class="note">· 云端制作有频率限制：每分钟最多 3 次（按请求时间滚动统计）。</div>
+            <div class="note">· 重新制作、换底等云端请求都计入次数；直接保存已生成照片不计入。</div>
+          </div>
+        </div>
+        <div class="btn ghost">我的订单</div>
+        <div class="btn ghost" style="margin-top:10px">返回首页</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>五、一屏高度预算</h2><span>估算口径：以 iPhone 14 Pro（852pt ≈ 1704rpx，扣导航与安全区约 190rpx → 可用 ≈ 1510rpx）</span></div>
+    <div class="panel">
+      <table>
+        <tr><th style="width:110px">页面</th><th style="width:110px">估算高度</th><th style="width:90px">是否一屏</th><th>主要占位与瘦身手段</th></tr>
+        <tr>
+          <td><b>首页</b></td><td>≈ 1460rpx</td><td style="color:var(--c-ok);font-weight:600">✅ 是</td>
+          <td>尺寸 10 项两列 5 行 ≈700rpx 为大头；**适用场景只在选中卡片展开**、摘要省略毫米尺寸、页脚合并成一行，共省约 280rpx</td>
+        </tr>
+        <tr>
+          <td><b>制作页</b></td><td>≈ 970rpx</td><td style="color:var(--c-ok);font-weight:600">✅ 是</td>
+          <td>拍摄要求折叠；尺寸卡 4 行并 3 行；主操作固定底部栏（不占内容流）</td>
+        </tr>
+        <tr>
+          <td><b>结果页</b></td><td>≈ 1320rpx</td><td style="color:var(--c-ok);font-weight:600">✅ 是</td>
+          <td>规格检查由「两行一条」改「一行一条」省约 160rpx；预览收窄到 360rpx；处理明细折叠</td>
+        </tr>
+        <tr>
+          <td><b>购买页</b></td><td>≈ 1010rpx</td><td style="color:var(--c-ok);font-weight:600">✅ 是</td>
+          <td>规则长文折叠进「购买须知」卡；两个次要按钮并排一行（原两行）</td>
+        </tr>
+        <tr>
+          <td><b>订单页</b></td><td>≈ 760rpx + 230 × 订单数</td><td style="color:var(--c-warn);font-weight:600">△ 1~2 单内</td>
+          <td>列表页允许随记录数滚动；单卡已压到 3 行信息 + 单行按钮</td>
+        </tr>
+      </table>
+      <div class="legend" style="margin-top:14px">
+        <span>小屏机型（iPhone SE 667pt ≈ 1154rpx）：首页与结果页会略超，正常滚动即可；其余页面均在一屏内。</span>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

@@ -3,42 +3,67 @@
   <view class="hero-wrap">
     <view class="hero-main">
       <view class="hero-copy">
-        <view class="hero-title">考试报名照，3分钟搞定</view>
-        <view class="hero-sub">选规格 · 自动裁剪 · 一键换底</view>
+        <view class="hero-title">证件照，3分钟搞定</view>
+        <view class="hero-sub">选底色 · 选尺寸 · 自动裁剪换底</view>
       </view>
       <view class="hero-art" wx:if="{{bannerOk}}">
         <image class="hero-banner" src="/assets/banner-hero.jpg" mode="widthFix" binderror="onBannerError" />
       </view>
-    </view>
-    <view class="hero-features">
-      <text>官方规格</text><text>智能裁剪</text><text>多种底色</text><text>高清导出</text>
     </view>
     <button class="share-btn" size="mini" open-type="share" aria-label="分享小程序给朋友" hover-class="share-pressed">
       <image class="share-icon" src="/assets/share-plane.png" mode="aspectFit" />
     </button>
   </view>
 
-  <view class="list">
-    <view
-      class="exam-card"
-      wx:for="{{exams}}"
-      wx:key="id"
-      data-id="{{item.id}}"
-      bindtap="onPickExam"
-      hover-class="press"
-    >
-      <view class="exam-main">
-        <view class="exam-name">{{item.name}}</view>
-        <view class="exam-stage">{{item.stage}}</view>
-        <view class="exam-meta">
-          <text class="chip">{{item.bgNames}}</text>
-          <text class="chip">{{item.sizeSummary}}</text>
-        </view>
+  <!-- 底色：所有底色平铺，不再按场景区分 -->
+  <view class="card">
+    <view class="card-title">选择底色</view>
+    <view class="color-row">
+      <!-- 滑动高亮块：随选中项平滑移动（位置由 JS 实测），样式全局唯一 -->
+      <view class="slide-hl" style="{{colorSlider}}"></view>
+      <view
+        class="color-item {{item.id === colorId ? 'on' : ''}}"
+        wx:for="{{colors}}"
+        wx:key="id"
+        id="color-{{item.id}}"
+        data-id="{{item.id}}"
+        bindtap="onPickColor"
+        hover-class="press"
+      >
+        <view class="color-dot" style="background:{{item.hex}}"></view>
+        <view class="color-name">{{item.name}}</view>
       </view>
-      <view class="arrow">›</view>
+    </view>
+  </view>
+
+  <!-- 尺寸：所有尺寸两列平铺，副标题是该尺寸的适用场景标注 -->
+  <view class="card">
+    <view class="card-title">选择尺寸</view>
+    <view class="size-grid">
+      <!-- 滑动高亮块：位置由 JS 实测卡片得到，横竖都能滑（样式全局唯一） -->
+      <view class="slide-hl" style="{{sizeSlider}}"></view>
+      <view
+        class="size-card {{item.id === sizeId ? 'on' : ''}}"
+        wx:for="{{sizes}}"
+        wx:key="id"
+        id="size-{{item.id}}"
+        data-id="{{item.id}}"
+        bindtap="onPickSize"
+        hover-class="press"
+      >
+        <view class="size-check" wx:if="{{item.id === sizeId}}">✓</view>
+        <view class="size-name">{{item.name}}</view>
+        <view class="size-summary">{{item.summary}}</view>
+        <!-- 适用场景：所有卡都显示（蓝色标注行） -->
+        <view class="size-usage">{{item.usage}}</view>
+      </view>
     </view>
 
-    <view class="empty" wx:if="{{!exams.length}}">规格库加载中，下拉可刷新</view>
+    <view class="empty" wx:if="{{!sizes.length}}">规格库加载中，下拉可刷新</view>
+  </view>
+
+  <view class="start-bar">
+    <button class="btn lg" bindtap="onStart" hover-class="btn-pressed">开始制作</button>
   </view>
 
   <view class="footer">

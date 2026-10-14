@@ -875,7 +875,8 @@ function localMatting(croppedPath, session, shortEdge) {
  * 制作一张证件照
  * @param {object} opts
  *   imgPath       原图路径（wx.chooseMedia original）
- *   exam          specs.js 的考试对象
+ *   sizeSpec      specs.js 的尺寸规格对象（px / sizeRule / minSizeKB / maxSizeKB /
+ *                 cropFaceRatio）—— v0.5.0 起取代原来的 exam 对象
  *   bgHex         底色
  *   session       已加载的推理会话（matting.createSession 产物）
  *   shortEdge     推理短边，默认 384
@@ -890,10 +891,13 @@ function localMatting(croppedPath, session, shortEdge) {
  */
 function makeIdPhoto(opts) {
   const o = opts || {};
-  const exam = o.exam;
-  const spec = exam.image;
-  const outW = spec.recommendPx[0];
-  const outH = spec.recommendPx[1];
+  // v0.5.0：不再有「考试」对象，改为直接吃一个尺寸规格（specs.js 的 SIZES 条目）
+  const spec = o.sizeSpec;
+  if (!spec || !Array.isArray(spec.px)) {
+    return Promise.reject(new Error('缺少尺寸规格'));
+  }
+  const outW = spec.px[0];
+  const outH = spec.px[1];
   const ratio = outW / outH;
   const metrics = [];
   const t0 = Date.now();
@@ -902,7 +906,8 @@ function makeIdPhoto(opts) {
   return detectFaceOriginal(o.imgPath)
     .then((fd) => {
       metrics.push({ k: '人脸检测', v: fd.costMs ? `${fd.costMs} ms` : '跳过' });
-      const faceRatio = (exam.portrait && exam.portrait.cropFaceRatio) || 0.45;
+      // 构图的人脸占比：尺寸可覆盖（如驾驶证按 GA482-2012 头部占比更大），默认 0.45
+      const faceRatio = spec.cropFaceRatio || 0.45;
       const box = fd.face
         ? face.calcCropBox(fd.face, fd.origW, fd.origH, ratio, faceRatio)
         : fallbackCropBox(fd.origW, fd.origH, ratio, faceRatio);

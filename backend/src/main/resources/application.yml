@@ -61,8 +61,11 @@ wx:
     appkey-sandbox: ${XPHOTO_APP_KEY_SANDBOX:}
     env: ${XPHOTO_ENV:0}
     push-token: ${XPHOTO_PUSH_TOKEN:}
-    # 会员商品仍以 365 作为“一自然年”的配置标记，服务端按 YEAR 运算，跨闰年不提前一天。
-    goods: ${XPHOTO_GOODS:photo1:390:1:0:单张高清无水印导出;photo3:690:3:0:规格套装（3 张）;vip1:1990:0:365:年会员（1 年不限保存次数）}
+    # 2026-10-14 调价：张数包改为「¥3.90 / 5 次」「¥6.90 / 10 次」，**年会员商品已下架**。
+    # 但后端会员能力（vip_expire_at / addVipDays / reduceVipDays / view 的 remaining=-1）
+    # 必须保留：已购年卡的老用户仍在有效期内、历史订单退款也要走这条路径。
+    # 下架只是不再出现在 /api/photo/pay/goods 里，不是把能力删掉。
+    goods: ${XPHOTO_GOODS:photo5:390:5:0:高清导出 5 次;photo10:690:10:0:高清导出 10 次}
 
 # 运维/管理接口口令（规格库后台维护、兜底查单、订单总览、权益修数）
 photo:

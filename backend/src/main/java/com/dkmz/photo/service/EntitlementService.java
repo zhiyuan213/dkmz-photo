@@ -4,12 +4,16 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.dkmz.photo.entity.PhotoEntitlement;
 import com.dkmz.photo.entity.PhotoExport;
+import com.dkmz.photo.entity.PhotoFreeGrant;
 import com.dkmz.photo.mapper.PhotoEntitlementMapper;
 import com.dkmz.photo.mapper.PhotoExportMapper;
+import com.dkmz.photo.mapper.PhotoFreeGrantMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -23,6 +27,16 @@ import java.util.Map;
  * 做过一次就永久拥有那张图 —— 所以必须落流水（photo_export）并扣减，
  * 否则用户重装小程序就能无限导出。
  *
+ * 免费额度语义（2026-10-14 变更）：
+ *   原来是**一次性**送 1 张（用完永久没有）；现在改为**每天送 1 张**。
+ *   实现方式是「懒发放」：本服务没有定时任务（最小实例数可设 0），
+ *   所以不靠调度器在午夜重置，而是在每次 ensure() 时比对业务日 ——
+ *   发现 photo_free_grant.last_grant_date 不是今天就补发一次。
+ *   服务整天没人访问也无所谓：下一个请求进来时补上，用户无感。
+ *
+ *   免费与已购**分开记录**：photo_entitlement 里 free_quota 与 paid_quota 本就是两列，
+ *   每日重置只写 free_quota，绝不动 paid_quota；扣减时也是先扣免费、后扣已购。
+ *
  * 幂等：photo_export.client_no 唯一键。重复请求（网络重试/连点）不会重复扣减。
  */
 @Service
@@ -30,19 +44,22 @@ public class EntitlementService {
 
     private static final Logger log = LoggerFactory.getLogger(EntitlementService.class);
 
-    /** 免费体验张数：让用户在真机上先看到「无水印成品」长什么样，降低付费决策门槛 */
+    /** 每日免费体验张数：让用户每天都能先看到「无水印成品」长什么样，降低付费决策门槛 */
     public static final int DEFAULT_FREE_QUOTA = 1;
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PhotoEntitlementMapper entMapper;
     private final PhotoExportMapper exportMapper;
+    private final PhotoFreeGrantMapper grantMapper;
 
-    public EntitlementService(PhotoEntitlementMapper entMapper, PhotoExportMapper exportMapper) {
+    public EntitlementService(PhotoEntitlementMapper entMapper, PhotoExportMapper exportMapper,
+                             PhotoFreeGrantMapper grantMapper) {
         this.entMapper = entMapper;
         this.exportMapper = exportMapper;
+        this.grantMapper = grantMapper;
     }
 
-    /** 取权益记录，没有就建（默认 1 张免费体验） */
+    /** 取权益记录，没有就建（默认 1 张免费体验），并顺带发放当天的免费额度 */
     public PhotoEntitlement ensure(String openid) {
         PhotoEntitlement e = entMapper.selectById(openid);
         if (e == null) {
@@ -66,7 +83,55 @@ public class EntitlementService {
         if (e.getPaidQuota() == null) {
             e.setPaidQuota(0);
         }
+        grantDailyFree(e);
         return e;
+    }
+
+    /**
+     * 每日免费额度的懒发放：业务日不是今天时，把 free_quota 重置为 DEFAULT_FREE_QUOTA。
+     *
+     * 并发安全（两个请求同时进来只会发一次）：
+     *   ① 先做条件 UPDATE：WHERE openid=? AND last_grant_date <> 今天，同时 SET 为今天。
+     *      affected>0 ⇒ 本次由我完成跨天推进，可以发放。
+     *   ② affected=0 有两种可能：行不存在（首次），或行已存在且已是今天（已发过）。
+     *      尝试 INSERT：成功 ⇒ 首次，可以发放；主键冲突 ⇒ 今天已发过，不发放。
+     *
+     * 为什么不用「先查再写」：两个请求会都查到「不是今天」，然后都重置。
+     * 重置本身幂等（都是写 1），但如果用户在此期间正好把免费次数用掉，
+     * 就会把用掉的次数又还回去 —— 条件 UPDATE 的 affected 判断能杜绝这种情况。
+     *
+     * 注意：整个方法只写 free_quota，**绝不触碰 paid_quota**（已购张数独立存放）。
+     */
+    private void grantDailyFree(PhotoEntitlement e) {
+        String openid = e.getOpenid();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+
+        int updated = grantMapper.update(null, new UpdateWrapper<PhotoFreeGrant>()
+                .eq("openid", openid)
+                .ne("last_grant_date", today)
+                .set("last_grant_date", today));
+
+        boolean shouldGrant = updated > 0;
+        if (!shouldGrant) {
+            PhotoFreeGrant g = new PhotoFreeGrant();
+            g.setOpenid(openid);
+            g.setLastGrantDate(today);
+            try {
+                grantMapper.insert(g);
+                shouldGrant = true; // INSERT 成功 = 首次出现，今天还没发过
+            } catch (DuplicateKeyException dup) {
+                shouldGrant = false; // 行已存在且就是今天 ⇒ 已发过
+            }
+        }
+        if (!shouldGrant) {
+            return;
+        }
+
+        entMapper.update(null, new UpdateWrapper<PhotoEntitlement>()
+                .eq("openid", openid)
+                .set("free_quota", DEFAULT_FREE_QUOTA));
+        e.setFreeQuota(DEFAULT_FREE_QUOTA);
+        log.info("每日免费额度已发放 openid={} date={} quota={}", openid, today, DEFAULT_FREE_QUOTA);
     }
 
     /** 会员是否在有效期内 */
@@ -81,15 +146,20 @@ public class EntitlementService {
     public Map<String, Object> view(String openid) {
         PhotoEntitlement e = ensure(openid);
         boolean vip = vipActive(e);
+        int free = e.getFreeQuota() == null ? 0 : e.getFreeQuota();
+        int paid = e.getPaidQuota() == null ? 0 : e.getPaidQuota();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
-        out.put("freeQuota", e.getFreeQuota());
-        out.put("paidQuota", e.getPaidQuota());
+        // freeQuota = 今天还剩几次免费（0 或 1）；每天 0 点（Asia/Shanghai）自动补回
+        out.put("freeQuota", free);
+        out.put("freeDailyQuota", DEFAULT_FREE_QUOTA);
+        out.put("freeUsedToday", Math.max(0, DEFAULT_FREE_QUOTA - free));
+        out.put("paidQuota", paid);
         out.put("vipExpireAt", e.getVipExpireAt() == null ? null : e.getVipExpireAt().toString());
         out.put("vipActive", vip);
         // 会员期内导出不限次 → remaining 给 -1 表示「无限」，前端据此隐藏付费引导
-        out.put("remaining", vip ? -1 : (e.getFreeQuota() + e.getPaidQuota()));
-        out.put("canExport", vip || (e.getFreeQuota() + e.getPaidQuota()) > 0);
+        out.put("remaining", vip ? -1 : (free + paid));
+        out.put("canExport", vip || (free + paid) > 0);
         return out;
     }
 

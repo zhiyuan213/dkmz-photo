@@ -9,14 +9,33 @@ const STEPS = [
   { key: 'crop', label: '人脸检测 · 智能裁剪' },
   { key: 'matting', label: '抠图' },
   { key: 'compose', label: '换底合成' },
-  { key: 'size', label: '按规格导出' },
+  { key: 'size', label: '按尺寸导出' },
+];
+
+/**
+ * 通用拍摄要求。
+ *
+ * v0.5.0 去掉「考试」维度后，原来挂在每个考试上的 notes 没了归属，
+ * 但注意事项是真实有用的（报名照被驳回最常见的原因就是戴眼镜、遮眉眼耳、美颜过度）。
+ * 这里保留各考试原文里重复出现的**共性条款**，属于通用要求、不涉及某个考试的特定规格。
+ * 尺寸特有的部分由 size.sizeNote 单独展示。
+ */
+const SHOOT_NOTES = [
+  '近 6 个月内正面、免冠、彩色头像',
+  '不得佩戴眼镜、隐形眼镜、美瞳',
+  '不得戴帽子、头巾、发带',
+  '头发不得遮挡眉毛、眼睛、耳朵',
+  '不得美颜、特效、翻拍，不得 PS 修改人像特征',
 ];
 
 Page({
   data: {
-    exam: null,
+    size: null,
+    shootNotes: SHOOT_NOTES,
     bgOptions: [],
     bgIndex: 0,
+    // 底色滑动高亮块（与首页一致，位置由 JS 实测）
+    bgSlider: 'opacity: 0',
 
     // AI 精修已默认启用（不再提供开关）：替换背景 + 美颜。
     // 抠图一律走云端 BDA；云端不可用时自动回退端上 MODNet（此时不含美颜）。
@@ -39,24 +58,30 @@ Page({
     cameraVisible: false,
     devicePosition: 'front', // 默认前置摄像头
     snapping: false,
+
+    // 拍摄要求默认折叠：首屏留给底色选择与主操作按钮
+    showNotes: false,
   },
 
   onLoad(query) {
-    const exam = specs.getExam(query.exam) || specs.allExams()[0];
-    const bgOptions = specs.examBackgrounds(exam);
-    // 取景引导框：按当前规格比例生成（屏宽 72%）
-    const [pw, ph] = exam.image.recommendPx;
+    // v0.5.0：入参从 ?exam= 改为 ?color=&size=（首页的两个选择器）
+    const size = specs.getSize(query.size) || specs.allSizes()[0];
+    const bgOptions = specs.allBackgrounds();
+    const wanted = query.color || 'white';
+    const found = bgOptions.findIndex((b) => b.id === wanted);
+    // 取景引导框：按当前尺寸比例生成（屏宽 72%）
+    const [pw, ph] = size.px;
     const frameW = Math.round(750 * 0.72);
     const frameH = Math.round((frameW * ph) / pw);
     const camFrameStyle = `width:${frameW}rpx;height:${frameH}rpx;left:${Math.round((750 - frameW) / 2)}rpx;top:24%;`;
     this.setData({
-      exam,
+      size,
       bgOptions,
-      bgIndex: 0,
+      bgIndex: found < 0 ? 0 : found,
       camFrameStyle,
       cloudAvailable: api.isCloudEnabled(),
       steps: STEPS.map((s) => ({ key: s.key, label: s.label, state: 'pending' })),
-    });
+    }, () => this.updateBgSlider());
     this.prepareModel();
   },
 
@@ -88,6 +113,43 @@ Page({
 
   onBgChange(e) {
     this.setData({ bgIndex: Number(e.currentTarget.dataset.index) });
+    this.updateBgSlider();
+  },
+
+  /** 首次渲染完成后再校准一次滑块位置（确保进来就停在默认选中的底色上） */
+  onReady() {
+    this.updateBgSlider();
+  },
+
+  /** 底色滑动高亮块：实测选中卡相对行的位置（与首页同款动效） */
+  updateBgSlider() {
+    const cur = this.data.bgOptions[this.data.bgIndex];
+    if (!cur || !cur.id) return;
+    const tryMeasure = (n) => {
+      const q = wx.createSelectorQuery();
+      q.select('.bg-row').boundingClientRect();
+      q.select('#bg-' + cur.id).boundingClientRect();
+      q.exec((rects) => {
+        const row = rects && rects[0];
+        const card = rects && rects[1];
+        if ((!row || !card || !card.width) && n > 0) {
+          setTimeout(() => tryMeasure(n - 1), 120);
+          return;
+        }
+        if (!row || !card) return;
+        this.setData({
+          bgSlider:
+            'opacity: 1; transform: translate(' +
+            (card.left - row.left) + 'px, ' + (card.top - row.top) + 'px);' +
+            ' width: ' + card.width + 'px; height: ' + card.height + 'px;',
+        });
+      });
+    };
+    setTimeout(() => tryMeasure(2), 30);
+  },
+
+  onToggleNotes() {
+    this.setData({ showNotes: !this.data.showNotes });
   },
 
   onPickPhoto() {
@@ -204,7 +266,7 @@ Page({
     pipeline
       .makeIdPhoto({
         imgPath,
-        exam: this.data.exam,
+        sizeSpec: this.data.size,
         bgHex: bg.hex,
         session: this.session,
         cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, true, extra) : null,
@@ -221,7 +283,7 @@ Page({
           if (s.state === 'doing') this.setStep(s.key, 'done');
         });
         const payload = {
-          examId: this.data.exam.id,
+          sizeId: this.data.size.id,
           bgId: bg.id,
           result,
         };

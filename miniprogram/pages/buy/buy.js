@@ -2,11 +2,14 @@ const api = require('../../utils/api.js');
 const buy = require('../../utils/buy.js');
 const config = require('../../utils/config.js');
 
-/** 商品卡辅助文案：会员显示天数，张数包显示张数 */
+/** 商品卡辅助文案：会员显示天数，张数包显示张数与单张均价 */
 function benefitText(g) {
   if (g.vipDays === 365) return '1 年不限保存次数，云端制作有频率限制';
   if (g.vipDays > 0) return `${g.vipDays} 天不限保存次数，云端制作有频率限制`;
-  if (g.quota > 0) return `${g.quota} 张高清无水印导出`;
+  if (g.quota > 0) {
+    const unit = ((g.priceFen || 0) / 100 / g.quota).toFixed(2);
+    return `${g.quota} 张高清无水印导出 · 约 ¥${unit}/张`;
+  }
   return '—';
 }
 
@@ -19,6 +22,8 @@ Page(config.withConfig({
     error: '',
     paying: false,
     reviewMode: config.isReviewMode(),
+    // 云端制作规则默认折叠：首屏先让用户看到价格与张数
+    showRules: false,
   },
 
   onLoad() {
@@ -55,6 +60,8 @@ Page(config.withConfig({
     return Promise.all([api.fetchGoods(), api.fetchEntitlement()])
       .then(([goodsRes, entRes]) => {
         const list = goodsRes && goodsRes.ok ? goodsRes.goods || [] : [];
+        // 年会员下架后，「最划算」改为标在张数最多（单张均价最低）的那一档
+        const maxQuota = list.reduce((m, g) => Math.max(m, g.quota || 0), 0);
         this.setData({
           goods: list.map((g) => ({
             goodsId: g.goodsId,
@@ -62,6 +69,7 @@ Page(config.withConfig({
             priceText: buy.fmtYuan(g.priceFen),
             benefit: benefitText(g),
             vip: (g.vipDays || 0) > 0,
+            best: (g.quota || 0) > 0 && g.quota === maxQuota,
           })),
           entitlement: entRes && entRes.ok ? entRes : null,
           loading: false,
@@ -94,6 +102,10 @@ Page(config.withConfig({
 
   onGoOrders() {
     wx.navigateTo({ url: '/pages/orders/orders' });
+  },
+
+  onToggleRules() {
+    this.setData({ showRules: !this.data.showRules });
   },
 
   onGoHome() {

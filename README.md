@@ -1,6 +1,6 @@
 # dkmz-photo · 登科喵证件照小程序
 
-> 帮考生 **3 分钟**做出符合报名要求的证件照：选考试 → 自动裁剪构图 → 一键换底色 → 付费解锁高清无水印。
+> 帮考生 **3 分钟**做出符合报名要求的证件照：选底色 + 选尺寸 → 自动裁剪构图 → 一键换底 → 付费解锁高清无水印。
 > 与「考试倒计时」（`D:/code/exam-countdown`）联动导流：主站提醒「该报名了」，这里「把报名的照片做出来」。
 
 ## 项目状态
@@ -24,7 +24,7 @@
 dkmz-photo/
 ├── miniprogram/                    # 小程序前端（阶段 1：免费主链路）
 │   ├── pages/
-│   │   ├── index/                  # 首页：考试规格列表 + 搜索 + 下拉刷新规格库 + 页脚入口
+│   │   ├── index/                  # 首页：底色选择（4 色）+ 尺寸选择（10 个，带场景标注）+ 下拉刷新规格库 + 页脚入口
 │   │   ├── make/                   # 制作页：选照片 → 自动裁剪 → 换底 → 按规格导出
 │   │   ├── result/                 # 结果页：预览 + 规格校验 + 导出（先校验权益再保存）
 │   │   ├── orders/                 # 订单中心：权益概览 + 订单列表（提审需登记此 path）
@@ -37,7 +37,7 @@ dkmz-photo/
 │   ├── utils/
 │   │   ├── api.js                  # 网络层：云托管调用封装（容器调用/公网域名）+ 离线降级
 │   │   ├── legal.js                # 合规文案常量（应用名/更新日期/联系邮箱/开源组件）
-│   │   ├── specs.js                # 考试规格库：内置兜底 + 本地缓存 + **云端下发**
+│   │   ├── specs.js                # 规格库：内置底色/尺寸兜底 + 本地缓存 + **云端下发**
 │   │   ├── pipeline.js             # 制作流水线：人脸构图→抠图→换底→水印→按体积二分导出
 │   │   ├── matting.js              # 模型下载缓存 · 推理会话 · 预处理 · 抠图 · 换底合成
 │   │   └── face.js                 # VisionKit 静态图人脸检测 + 证件照构图裁剪框
@@ -46,11 +46,11 @@ dkmz-photo/
 │   ├── src/main/java/com/dkmz/photo/
 │   │   ├── controller/             # SpecController（规格库下发/后台维护）、PhotoPayController（支付/权益）
 │   │   ├── service/                # SpecService、PhotoPayService、EntitlementService、TokenManager
-│   │   ├── entity/ · mapper/       # photo_spec / photo_pay_order / photo_pay_refund / photo_entitlement / photo_export
+│   │   ├── entity/ · mapper/       # photo_spec / photo_pay_order / photo_pay_refund / photo_entitlement / photo_free_grant / photo_export
 │   │   └── support/                # PaySignUtil（虚拟支付签名）、PushSignUtil（推送验签+XML）、OpenidSupport
 │   └── src/main/resources/
 │       ├── schema.sql              # 建表（全部 IF NOT EXISTS，可重复启动）
-│       ├── specs-seed.json         # 规格库种子（由 docs/规格库-v0.1.json 生成）
+│       ├── specs-seed.json         # 规格库种子（schemaVersion=2：4 底色 + 10 尺寸，由 tools 维护）
 │       └── application.yml         # 全部凭据走环境变量，默认留空
 ├── Dockerfile · docker/            # 云托管多阶段构建（Maven 国内镜像 + JRE 运行时）
 ├── models/                         # 模型权重（*.onnx 不进 git，见该目录 README）
@@ -64,8 +64,10 @@ dkmz-photo/
 ├── docs/
 │   ├── 证件照小程序-落地方案.md      # 产品定位 / MVP / 技术方案 / 变现 / 上线前置 / 风险
 │   ├── API.md                       # 后端接口文档（规格库下发 / 支付 / 权益 / 环境变量 / 表结构）
-│   ├── 考试证件照规格库-v0.1.md      # 各考试报名照规格（核心资产）
-│   ├── 考试证件照规格库-v0.1.json    # 同上，机器可读（后端种子来源）
+│   ├── 考试证件照规格库-v0.1.md      # 各考试报名照规格原始整理（规格知识来源，v0.1 留档）
+│   ├── 考试证件照规格库-v0.1.json    # 同上，机器可读（v0.1 留档，已被 specs-seed.json 取代）
+│   ├── 拍博士-接入方案与试用验证.md   # 第三方「一次出 8 张」高级功能评估（待试用验证质量）
+│   ├── ui-spec-preview.html         # UI 规范与页面预览（色板 / 字号 6 级 / 按钮 3 档 + 页面示意，浏览器打开）
 │   └── 端上抠图验证手册.md           # 阶段 0 操作步骤 / 验收标准 / 排查表 / 实测记录（已回填）
 ├── project.config.json             # 开发者工具导入这个（miniprogramRoot: miniprogram/）
 └── README.md
@@ -79,8 +81,8 @@ dkmz-photo/
 1. 云托管控制台为本小程序新建环境 → 新建服务 `dkmz-backend`，部署方式选「Git 仓库」指向本仓库 `Dockerfile`
 2. 建 MySQL（建议独立库 `dkmz_photo`；表名已加 `photo_` 前缀，与 exam 库同实例也不冲突）
 3. 配环境变量：`WX_APPID`、`WX_SECRET`、`SPRING_DATASOURCE_*`、`PHOTO_JOB_TOKEN`（随机串）
-4. 部署后自测：`GET /api/photo/specs` 应返回 `ok:true` 且 `exams` 有 7 条（种子自动导入）
-5. 虚拟支付开通后补：`XPHOTO_ENABLED=true`、`XPHOTO_OFFER_ID`、`XPHOTO_APP_KEY`、`XPHOTO_PUSH_TOKEN`、`XPHOTO_GOODS`
+4. 部署后自测：`GET /api/photo/specs` 应返回 `ok:true`，`backgrounds` 4 条、`sizes` 10 条（种子自动导入；`schemaVersion` 变化时会全量重导）
+5. 虚拟支付开通后补：`XPHOTO_ENABLED=true`、`XPHOTO_OFFER_ID`、`XPHOTO_APP_KEY`、`XPHOTO_PUSH_TOKEN`、`XPHOTO_GOODS`（商品默认 `photo5:390:5` / `photo10:690:10`，即 ¥3.90 送 5 张、¥6.90 送 10 张）
 6. 云托管「消息推送」绑定到本服务的 `POST /api/photo/pay/notify`；再加定时任务调 `POST /api/photo/pay/recheck?token=<PHOTO_JOB_TOKEN>`（建议每 10 分钟）
 7. 把环境 ID 填进 `miniprogram/utils/api.js` 的 `ENV_ID`
 
@@ -116,13 +118,31 @@ node scripts/serve-models.mjs          # → http://127.0.0.1:5178/model_fp16.on
 
 详细步骤、验收标准、失败排查表、实测记录表见 **`docs/端上抠图验证手册.md`**。
 
+## 变现与权益模型
+
+| 商品 | 价格 | 内容 | 上架状态 |
+|---|---|---|---|
+| 每日免费 | 0 元 | 每天 **1 张**高清无水印 | ✅ 全量 |
+| `photo5` | ¥3.90 | 高清导出 5 次（≈¥0.78/张） | ✅ 主推 |
+| `photo10` | ¥6.90 | 高清导出 10 次（≈¥0.69/张） | ✅ 主推（更划算） |
+| `photo1` / `photo3` / `vip1`（年卡） | 3.9 / 9.9 / 19.9 | 已下架 | 后端能力保留 |
+
+- **免费与已购分开记账**：`photo_entitlement.free_quota`（免费，每天重置）+ `paid_quota`（已购，不重置）；
+  扣减优先级 **会员 > 当日免费 > 已购张数**，消费接口回传 `source` 供前端提示。
+- **每日免费是"懒发放"**：本服务无定时任务，靠 `photo_free_grant` 表记 `last_grant_date`，
+  用户下次访问时比对业务日补发——条件 UPDATE + affected 判断，天然并发安全。
+- **成本红线**：端上抠图 + 腾讯云 BDA 分割 ≈¥0.01/次，才支撑得起 ¥0.69~0.78/张的定价。
+  第三方「一次出 8 张」的 API 成本 ≈¥1/次，**不能混进这条产品线**，须单独立项（见 `docs/拍博士-接入方案与试用验证.md`）。
+
 ## 待办
 
-- [ ] 阶段 0 真机实测并回填数据（加载 / 推理 / 合成耗时、边缘质量、导出体积）
-- [ ] 据实测结论定案：端上 / 端上初筛 + 云端精修 / 全云端
-- [ ] 阶段 1：工程骨架 + 4 个页面 + 规格库下发 + 免费链路跑通
+- [x] 阶段 0 真机实测并回填数据（2026-10-11 完成，vivo V2419A）
+- [x] 据实测结论定案：端上推理（fp32 + 384 短边）
+- [x] 阶段 1：工程骨架 + 页面 + 规格库下发 + 免费链路跑通
+- [x] 规格库结构重构：去场景，改为「4 底色 + 10 尺寸（带场景标注）」，每日免费 1 张，免费/已购分账
 - [ ] 补 AppID 到 `project.config.json`（正式开发时需要）
 - [ ] 上线前置：变更备案 → 开通虚拟支付 → 建道具 / 配发货推送
+- [ ] （可选）拍博士高级功能：待阿里云云市场开通试用、跑 `tools/paiboshi_probe.py` 验质量后再定
 
 ## 许可
 

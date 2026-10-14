@@ -85,15 +85,42 @@ CREATE TABLE IF NOT EXISTS photo_pay_refund (
 -- 用户权益：免费体验张数 + 已购张数 + 会员有效期
 -- 注意是「消耗型」：导出一次扣一张（会员期内不扣），与 exam-countdown 的
 -- 「可同时管理的提醒数」（删了就释放）语义不同，不能照搬实时计算的做法。
+--
+-- free_quota 语义（2026-10-14 变更）：原来是**一次性**送 1 张；现在改为
+-- **每天送 1 张**，由 photo_free_grant 表记录发放日期、在访问时懒重置。
+-- paid_quota（已购）与免费额度是**两列分开存放**，重置免费额度不会碰到已购张数。
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS photo_entitlement (
   openid        VARCHAR(64) PRIMARY KEY COMMENT '用户 openid',
-  free_quota    INT NOT NULL DEFAULT 1 COMMENT '免费体验张数（默认 1，让用户先看到无水印成品）',
+  free_quota    INT NOT NULL DEFAULT 1 COMMENT '免费体验张数（每日重置为 1，见 photo_free_grant）',
   paid_quota    INT NOT NULL DEFAULT 0 COMMENT '已购剩余张数（消耗型，导出原子自减）',
   vip_expire_at DATETIME DEFAULT NULL COMMENT '会员到期时间（null=从未购买）',
   created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户权益表';
+
+-- ------------------------------------------------------------
+-- 免费次数「每日发放」记录
+--
+-- 为什么单独建表：本文件在服务**每次启动**时执行，开头已明确禁止
+-- ALTER TABLE ADD COLUMN（第二次启动就因「列已存在」失败，整个服务起不来）。
+-- 所以「给 photo_entitlement 加一列 last_grant_date」这条路走不通，只能新建表。
+--
+-- 发放方式 = 懒发放（本服务无定时任务）：EntitlementService.ensure() 时比对
+-- last_grant_date 与业务日（Asia/Shanghai），不是今天就把它推到今天、
+-- 同时把 photo_entitlement.free_quota 重置为 1。
+--
+-- 并发安全：先做条件 UPDATE（WHERE openid=? AND last_grant_date<>今天），
+-- affected>0 才算「本次由我发放」；affected=0 再尝试 INSERT，
+-- 主键冲突说明行已存在且就是今天 ⇒ 今天已发过，不重复发放。
+-- 两个请求同时进来只会有一个拿到 affected>0。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS photo_free_grant (
+  openid          VARCHAR(64) PRIMARY KEY COMMENT '用户 openid',
+  last_grant_date DATE NOT NULL COMMENT '最近一次发放免费次数的业务日（Asia/Shanghai）',
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='免费次数每日发放记录';
 
 -- ------------------------------------------------------------
 -- 导出流水：client_no 唯一 → 网络重试 / 连点不会重复扣减张数

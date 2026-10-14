@@ -1,43 +1,71 @@
-.bg-row {
-  display: flex;
-  gap: 28rpx;
+/* 制作页：底色选择 + 处理方式 + 拍摄要求 + 底部固定主操作
+ * 字号/按钮/卡片均来自 app.wxss 全局规范 */
+
+/* 给底部固定操作栏留出空间 */
+.page {
+  padding-bottom: calc(136rpx + env(safe-area-inset-bottom));
 }
 
+/* ---------- 底色选择 ---------- */
+
+.bg-row {
+  position: relative;
+  display: flex;
+  gap: 16rpx;
+}
+
+/* 滑动高亮块样式在 app.wxss 的 .slide-hl（全局唯一来源） */
+
 .bg-item {
+  flex: 1;
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12rpx 20rpx;
+  padding: 12rpx 0 10rpx;
+  border: 2rpx solid var(--c-line);
   border-radius: 16rpx;
-  border: 2rpx solid transparent;
+  transition: transform 0.2s ease;
 }
 
-.bg-item.active {
-  border-color: #0d60f8;
-  background: #edf4fe;
+.bg-item.press {
+  transform: scale(0.94);
+}
+
+/* 选中态由滑块表达，卡片自身边框透明（盒尺寸不变） */
+.bg-item.on {
+  border-color: transparent;
 }
 
 .bg-swatch {
-  width: 88rpx;
-  height: 88rpx;
+  width: 48rpx;
+  height: 48rpx;
   border-radius: 50%;
   border: 1rpx solid #e3e8ef;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 选中的色点放大一档并带阴影（与首页一致） */
+.bg-item.on .bg-swatch {
+  transform: scale(1.12);
+  box-shadow: 0 4rpx 10rpx rgba(23, 78, 166, 0.18);
 }
 
 .bg-name {
-  margin-top: 10rpx;
+  margin-top: 8rpx;
   font-size: 24rpx;
-  color: #5a6474;
+  line-height: 1.5;
+  color: var(--c-text-2);
+  transition: color 0.2s ease;
 }
 
-.btn.big {
-  font-size: 32rpx;
-  padding: 10rpx 0;
+.bg-item.on .bg-name {
+  color: var(--c-blue);
+  font-weight: 600;
 }
 
-.steps {
-  margin-top: 28rpx;
-}
+/* ---------- 制作进度 ---------- */
 
 .step {
   display: flex;
@@ -54,12 +82,12 @@
 }
 
 .dot.doing {
-  background: #0d60f8;
+  background: var(--c-blue);
   animation: blink 1s infinite;
 }
 
 .dot.done {
-  background: #17a34a;
+  background: var(--c-ok);
 }
 
 @keyframes blink {
@@ -70,22 +98,16 @@
 
 .step-label {
   font-size: 26rpx;
-  color: #8a94a6;
+  color: var(--c-text-3);
 }
 
 .step-label.doing {
-  color: #0d60f8;
+  color: var(--c-blue);
   font-weight: 600;
 }
 
 .step-label.done {
-  color: #17a34a;
-}
-
-.note {
-  font-size: 26rpx;
-  color: #5a6474;
-  line-height: 1.8;
+  color: var(--c-ok);
 }
 
 /* ---------- 内嵌相机层 ---------- */
@@ -116,14 +138,13 @@
   text-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.6);
 }
 
-/* 取景引导框：透明轮廓，比例随考试规格（位置尺寸由 camFrameStyle 内联控制） */
+/* 取景引导框：透明轮廓，比例随所选尺寸（位置尺寸由 camFrameStyle 内联控制） */
 .cam-guide {
   position: absolute;
   border: 3rpx solid rgba(255, 255, 255, 0.85);
   border-radius: 16rpx;
 }
 
-/* 框内顶部提示（复用引导框的定位，向下偏移进入框内） */
 .cam-guide-tip {
   position: absolute;
   text-align: center;

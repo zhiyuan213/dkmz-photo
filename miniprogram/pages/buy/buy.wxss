@@ -1,27 +1,28 @@
-/* 购买页：商品卡 + 权益概览。配色与全局一致（主蓝 #0D60F8 / 页底 #F1F5FB） */
+/* 购买页：权益概览 + 商品卡 + 购买须知 + 云端规则
+ * 字号/按钮/卡片均来自 app.wxss 全局规范 */
 
-.section-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1f2b43;
-  margin: 8rpx 8rpx 16rpx;
+/* ---------- 权益概览 ---------- */
+
+.ent-card {
+  padding: 24rpx 28rpx;
 }
 
-/* ---- 权益概览 ---- */
-.ent-card {
-  padding: 28rpx 32rpx;
+.ent-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
 }
 
 .ent-left {
   font-size: 28rpx;
-  color: #5a6b8c;
+  color: var(--c-text-2);
 }
 
 .ent-num {
   font-size: 40rpx;
   font-weight: 700;
-  color: #0d60f8;
-  margin: 0 6rpx;
+  color: var(--c-blue);
+  margin: 0 4rpx;
 }
 
 .ent-vip {
@@ -30,15 +31,19 @@
   color: #b8860b;
 }
 
-/* ---- 商品卡 ---- */
-.goods {
-  padding: 32rpx;
-  margin-bottom: 20rpx;
+.ent-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--c-text-3);
 }
 
-.goods-vip {
-  border: 2rpx solid #0d60f8;
-  box-shadow: 0 6rpx 24rpx rgba(13, 96, 248, 0.12);
+/* ---------- 商品卡 ---------- */
+
+/* 最划算的一档：主蓝描边 + 浅蓝底，不加多余装饰 */
+.goods-best {
+  border: 2rpx solid var(--c-blue);
+  background: var(--c-blue-tint);
 }
 
 .goods-head {
@@ -51,119 +56,73 @@
 .goods-name {
   flex: 1;
   min-width: 0;
-  line-height: 1.5;
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 600;
-  color: #1f2b43;
-}
-
-.goods-badge {
-  flex-shrink: 0;
-  font-size: 22rpx;
-  color: #ffffff;
-  background: #0d60f8;
-  border-radius: 999rpx;
-  padding: 4rpx 18rpx;
+  line-height: 1.4;
+  color: var(--c-text);
 }
 
 .goods-benefit {
-  font-size: 26rpx;
-  color: #5a6b8c;
-  margin-top: 10rpx;
+  margin-top: 6rpx;
+  font-size: 24rpx;
   line-height: 1.6;
+  color: var(--c-text-2);
 }
 
 .goods-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 24rpx;
-}
-
-.goods-price {
-  font-size: 44rpx;
-  font-weight: 700;
-  color: #0d60f8;
-}
-
-.price-symbol {
-  font-size: 28rpx;
-  margin-right: 2rpx;
-}
-
-.buy-btn {
-  min-width: 180rpx;
-}
-
-/* ---- 购买须知 ---- */
-.tip-card {
-  padding: 28rpx 32rpx;
-}
-
-.tip-title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #1f2b43;
-  margin-bottom: 12rpx;
-}
-
-.tip-line {
-  font-size: 24rpx;
-  color: #7a88a3;
-  line-height: 1.7;
-}
-
-/* ---- 空态 / 底部按钮（复用全局 .card/.btn/.empty 样式，只补间距） ---- */
-.back {
   margin-top: 16rpx;
 }
 
-/* ---- 主按钮与空态（本页私有，orders 页的同类样式不跨页生效） ---- */
-.btn.primary {
-  background: #0d60f8;
-  color: #ffffff;
-  border: none;
+.goods-price {
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--c-blue);
 }
 
-.buy-btn {
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 36rpx;
-  font-size: 28rpx;
+.price-symbol {
+  font-size: 24rpx;
+  margin-right: 2rpx;
 }
 
-.empty {
-  text-align: center;
-  padding: 70rpx 24rpx;
+/* ---------- 文案块 ---------- */
+
+.card-title + .note,
+.soft-block .note + .note {
+  margin-top: 8rpx;
 }
 
-.empty-title {
-  font-size: 30rpx;
-  color: #4a5568;
-  font-weight: 600;
-}
-
-.empty-desc {
+/* 折叠入口：贴在购买须知下方 */
+.rule-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 14rpx;
-  font-size: 25rpx;
-  color: #8892a4;
-  line-height: 1.6;
+  padding-top: 12rpx;
+  border-top: 1rpx solid var(--c-line);
+  font-size: 24rpx;
+  color: var(--c-text-2);
 }
 
-.processing-rules {
-  border: 1rpx solid #dce8fb;
-  background: #f7faff;
+.rule-fold .fold {
+  padding: 0;
 }
 
-.rule-row {
+.rule-fold + .soft-block {
   margin-top: 12rpx;
-  font-size: 27rpx;
-  line-height: 1.6;
-  color: #1f2b43;
 }
 
-.rule-number {
-  color: #0d60f8;
-  font-weight: 600;
+/* 底部两个次要操作并排一行，省一屏高度（沿用 .btn 默认 88rpx 规格） */
+.foot-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 20rpx;
 }
 
+.foot-actions .btn {
+  flex: 1;
+  margin: 0;
+}
