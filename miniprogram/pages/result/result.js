@@ -76,7 +76,9 @@ Page(config.withConfig({
       bgName: bg.name,
       // 展示带水印预览版；高清无水印版在保存校验通过后给出
       // （备案模式不做权益校验，直接展示高清无水印图）
-      src: config.isReviewMode() ? r.path || r.previewPath : r.previewPath || r.path,
+      src: config.isReviewMode()
+        ? r.cleanPreviewPath || r.path || r.previewPath
+        : r.previewPath || r.path,
       kb: r.kb,
       px: `${r.px[0]}×${r.px[1]}`,
       quality: Math.round(r.quality * 100),

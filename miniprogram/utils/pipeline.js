@@ -119,6 +119,15 @@ function fallbackCropBox(imgWidth, imgHeight, ratio, faceHeightRatio) {
 
 // ----------------------------------------------------------- 裁剪与缩放
 
+function enableHighQualityScale(ctx) {
+  try {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+  } catch (e) {
+    // 部分基础库没有 imageSmoothingQuality，保留默认缩放行为即可。
+  }
+}
+
 /**
  * 从原图按 box 裁剪并缩放到 outW×outH，导出临时 jpg
  * box 只允许顶部越出原图（头顶留白不足等场景）：越界区域铺白色底，
@@ -131,6 +140,7 @@ function cropAndScale(imgPath, box, outW, outH, quality) {
   return new Promise((resolve, reject) => {
     const canvas = wx.createOffscreenCanvas({ type: '2d', width: outW, height: outH });
     const ctx = canvas.getContext('2d');
+    enableHighQualityScale(ctx);
     const img = canvas.createImage();
     img.onload = () => {
       // 1) 先铺白底（顶部越界补底；同时兜住 drawImage 未覆盖的区域）
@@ -205,6 +215,7 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
   return new Promise((resolve, reject) => {
     const canvas = wx.createOffscreenCanvas({ type: '2d', width: outW, height: outH });
     const ctx = canvas.getContext('2d');
+    enableHighQualityScale(ctx);
     const img = canvas.createImage();
     img.onload = () => {
       // 裁剪图与输出规格比例一致，直接铺满即可（无变形）
@@ -263,6 +274,7 @@ function canvasFromImage(imgPath, outW, outH) {
   return new Promise((resolve, reject) => {
     const canvas = wx.createOffscreenCanvas({ type: '2d', width: outW, height: outH });
     const ctx = canvas.getContext('2d');
+    enableHighQualityScale(ctx);
     const img = canvas.createImage();
     img.onload = () => {
       ctx.drawImage(img, 0, 0, outW, outH);
@@ -271,6 +283,41 @@ function canvasFromImage(imgPath, outW, outH) {
     img.onerror = () => reject(new Error('成品图解码失败'));
     img.src = imgPath;
   });
+}
+
+/**
+ * 最终缩小后做轻量反锐化遮罩，补回证件照小尺寸导出损失的轮廓细节。
+ * 调整量限制在 ±6，避免生成不存在的纹理或放大抠图边缘噪点。
+ */
+function sharpenCanvas(canvas, width, height) {
+  if (width < 3 || height < 3) return;
+  const ctx = canvas.getContext('2d');
+  let imageData;
+  try {
+    imageData = ctx.getImageData(0, 0, width, height);
+  } catch (e) {
+    return;
+  }
+  const data = imageData.data;
+  const source = new Uint8ClampedArray(data);
+  const luminance = (i) => source[i] * 0.299 + source[i + 1] * 0.587 + source[i + 2] * 0.114;
+  const clamp = (v) => Math.max(0, Math.min(255, v));
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const i = (y * width + x) * 4;
+      const blurred = (
+        luminance(i - 4) + luminance(i + 4)
+        + luminance(i - width * 4) + luminance(i + width * 4)
+      ) / 4;
+      const delta = luminance(i) - blurred;
+      if (Math.abs(delta) < 2) continue;
+      const adjustment = Math.max(-6, Math.min(6, delta * 0.28));
+      data[i] = clamp(source[i] + adjustment);
+      data[i + 1] = clamp(source[i + 1] + adjustment);
+      data[i + 2] = clamp(source[i + 2] + adjustment);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
 }
 
 /**
@@ -946,6 +993,7 @@ function makeIdPhoto(opts) {
           maskWidth: r.maskWidth,
           maskHeight: r.maskHeight,
           finishedPath: r.finishedPath,   // 云端成品图（有则不再走端上换底）
+          processingSize: r.processingSize,
           mattingMs: ms,
           mattingMode: mode,
         };
@@ -988,10 +1036,22 @@ function makeIdPhoto(opts) {
         // 云端成品图：美白像素、换底、边缘净化都已在后端完成，
         // 端上不再触碰像素（这正是历史 bug 的根源：端上只读 alpha、像素用本地图，
         // 云端美白的像素永远进不了成片）
-        return canvasFromImage(ctx0.finishedPath, outW, outH).then((canvas) => {
+        const previewSize = ctx0.processingSize || { width: outW, height: outH };
+        return Promise.all([
+          canvasFromImage(ctx0.finishedPath, outW, outH),
+          canvasFromImage(ctx0.finishedPath, previewSize.width, previewSize.height),
+        ]).then(([canvas, previewCanvas]) => {
           removeTempFile(ctx0.finishedPath);
+          sharpenCanvas(canvas, outW, outH);
           metrics.push({ k: '成品合成', v: '云端完成（含换底 / 边缘净化）' });
-          return Object.assign(ctx0, { canvas, wm });
+          metrics.push({ k: '清晰预览', v: `${previewSize.width}×${previewSize.height}` });
+          return Object.assign(ctx0, {
+            canvas,
+            previewCanvas,
+            previewWidth: previewSize.width,
+            previewHeight: previewSize.height,
+            wm,
+          });
         });
       }
       return buildComposite(
@@ -1010,6 +1070,7 @@ function makeIdPhoto(opts) {
           face: ctx0.fd.face,
         }
       ).then((canvas) => {
+        sharpenCanvas(canvas, outW, outH);
         metrics.push({ k: '换底合成', v: `${Date.now() - t2} ms` });
         return Object.assign(ctx0, { canvas, wm });
       });
@@ -1019,16 +1080,27 @@ function makeIdPhoto(opts) {
       // ① 高清无水印版：按规格体积二分（消耗权益后保存的就是它）
       return exportUnderSize(ctx0.canvas, outW, outH, spec).then((out) => {
         metrics.push({ k: '高清导出', v: `${out.kb} KB（质量 ${(out.quality * 100).toFixed(0)}%，无水印）` });
-        // ② 水印预览版：展示用，不做体积二分（一次导出即可）
+        // ② 结果页优先展示云端处理分辨率，避免把 295×413 放大后误判为成片模糊。
+        //    正式保存仍使用严格按规格和体积导出的 out.path。
         const drawPreview = () => {
-          if (!ctx0.wm) return Promise.resolve(out.path);
-          drawWatermark(ctx0.canvas.getContext('2d'), outW, outH, ctx0.wm);
-          return exportCanvas(ctx0.canvas, outW, outH, 0.85);
+          const canvas = ctx0.previewCanvas || ctx0.canvas;
+          const width = ctx0.previewWidth || outW;
+          const height = ctx0.previewHeight || outH;
+          const clean = ctx0.previewCanvas
+            ? exportCanvas(canvas, width, height, 0.95)
+            : Promise.resolve(out.path);
+          return clean.then((cleanPreviewPath) => {
+            if (!ctx0.wm) return { cleanPreviewPath, previewPath: cleanPreviewPath };
+            drawWatermark(canvas.getContext('2d'), width, height, ctx0.wm);
+            return exportCanvas(canvas, width, height, 0.90)
+              .then((previewPath) => ({ cleanPreviewPath, previewPath }));
+          });
         };
-        return drawPreview().then((previewPath) => {
+        return drawPreview().then(({ cleanPreviewPath, previewPath }) => {
           metrics.push({ k: '总计', v: `${Date.now() - t0} ms` });
           return {
             path: out.path,          // 高清无水印（消耗权益后保存）
+            cleanPreviewPath,        // 高分辨率无水印预览（备案模式展示）
             previewPath,             // 带水印预览（结果页展示 / 降级保存）
             kb: out.kb,
             quality: out.quality,
