@@ -29,6 +29,18 @@ function fmtYuan(fen) {
   return (Number(fen) / 100).toFixed(2);
 }
 
+/** 把微信支付底层错误转换成用户能执行的提示，同时保留原始错误到调试日志。 */
+function friendlyPayError(err) {
+  const raw = String((err && (err.msg || err.errMsg)) || '');
+  if (raw.includes('PRODUCT_ID_NOT_PUBLIS')) {
+    return '商品尚未发布，请联系管理员检查虚拟支付商品';
+  }
+  if (raw.includes('PRODUCT_ID_NOT_EXIST') || raw.includes('INVALID_PRODUCT')) {
+    return '商品配置不一致，请联系管理员处理';
+  }
+  return raw || '支付失败，请稍后重试';
+}
+
 /** wx.login 取一次性 code */
 function loginCode() {
   return new Promise((resolve, reject) => {
@@ -111,7 +123,7 @@ function payGoods(goods) {
         log('exit', '用户在收银台取消支付');
         return { ok: false, cancelled: true };
       }
-      const msg = (err && (err.msg || err.errMsg)) || '支付失败，请稍后重试';
+      const msg = friendlyPayError(err);
       log('fail', '购买失败:', err);
       wx.showToast({ title: msg, icon: 'none', duration: 2200 });
       return { ok: false };
@@ -119,4 +131,4 @@ function payGoods(goods) {
   return p;
 }
 
-module.exports = { payGoods, confirmDelivered, fmtYuan };
+module.exports = { payGoods, confirmDelivered, fmtYuan, friendlyPayError };
