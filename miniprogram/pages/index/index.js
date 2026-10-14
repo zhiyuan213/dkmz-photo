@@ -169,6 +169,19 @@ Page(config.withConfig({
     return { title: '登科喵证件照｜选底色选尺寸，一键出片', path: '/pages/index/index' };
   },
 
+  onAddToFavorites() {
+    return { title: '登科喵证件照｜下次制作更方便', query: '' };
+  },
+
+  onFavoriteGuide() {
+    wx.showModal({
+      title: '添加到我的小程序',
+      content: '点击右上角“···”，选择“添加到我的小程序”，以后从微信首页下拉即可快速打开。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  },
+
   onOpenAgreement() {
     wx.navigateTo({ url: '/pages/agreement/agreement' });
   },

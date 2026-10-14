@@ -41,8 +41,8 @@
 
 .hero-art {
   position: absolute;
-  /* 给右上角分享按钮留出独立空间，避免压住证件卡插画。 */
-  right: 76rpx;
+  /* 给右上角收藏、分享两个按钮留出完整空间。 */
+  right: 174rpx;
   bottom: 0;
   width: 208rpx;
   height: 108rpx;
@@ -57,10 +57,16 @@
   display: block;
 }
 
-.share-btn {
+.hero-actions {
   position: absolute;
   top: 14rpx;
   right: 16rpx;
+  z-index: 2;
+  display: flex;
+  gap: 10rpx;
+}
+
+.hero-action-btn {
   width: 68rpx !important;
   height: 68rpx;
   display: flex;
@@ -75,11 +81,11 @@
   box-shadow: none;
 }
 
-.share-btn::after {
+.hero-action-btn::after {
   border: none;
 }
 
-.share-icon {
+.hero-action-icon {
   width: 68rpx;
   height: 68rpx;
 }

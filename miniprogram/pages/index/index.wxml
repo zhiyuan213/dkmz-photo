@@ -10,9 +10,14 @@
         <image class="hero-banner" src="/assets/banner-hero.jpg" mode="widthFix" binderror="onBannerError" />
       </view>
     </view>
-    <button class="share-btn" open-type="share" aria-label="分享小程序给朋友">
-      <image class="share-icon" src="/assets/btn-friend.png" mode="aspectFit" />
-    </button>
+    <view class="hero-actions">
+      <button class="hero-action-btn" bindtap="onFavoriteGuide" aria-label="收藏小程序">
+        <image class="hero-action-icon" src="/assets/btn-fav.png" mode="aspectFit" />
+      </button>
+      <button class="hero-action-btn" open-type="share" aria-label="分享小程序给朋友">
+        <image class="hero-action-icon" src="/assets/btn-friend.png" mode="aspectFit" />
+      </button>
+    </view>
   </view>
 
   <!-- 底色：所有底色平铺，不再按场景区分 -->

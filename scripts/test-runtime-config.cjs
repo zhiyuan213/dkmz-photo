@@ -82,6 +82,8 @@ test('home uses native sharing with a valid home route', () => {
   assert.equal(page.onShareAppMessage().path, '/pages/index/index');
   const template = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/index/index.wxml'), 'utf8');
   assert.match(template, /open-type="share"/);
+  assert.match(template, /bindtap="onFavoriteGuide"/);
+  assert.equal(page.onAddToFavorites().title, '登科喵证件照｜下次制作更方便');
 });
 
 test('purchase from result returns after payment and result refreshes entitlement on show', () => {
