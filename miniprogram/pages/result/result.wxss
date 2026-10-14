@@ -2,7 +2,7 @@
  * 目标：主信息与「保存到相册」都在第一屏内 */
 
 .page {
-  padding-bottom: calc(136rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(116rpx + env(safe-area-inset-bottom));
 }
 
 /* ---------- 预览 ---------- */
@@ -11,18 +11,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20rpx;
+  padding: 16rpx;
 }
 
 /* 宽度收窄一档，保证预览 + 检查 + 底部栏同屏；比例随规格自适应 */
 .preview {
-  width: 360rpx;
+  width: 340rpx;
   background: var(--c-blue-soft);
   border-radius: 14rpx;
 }
 
 .preview-cap {
-  margin-top: 12rpx;
+  margin-top: 8rpx;
   font-size: 24rpx;
   line-height: 1.5;
   color: var(--c-text-2);
@@ -33,7 +33,7 @@
 .check {
   display: flex;
   align-items: flex-start;
-  padding: 9rpx 0;
+  padding: 6rpx 0;
 }
 
 .check-icon {

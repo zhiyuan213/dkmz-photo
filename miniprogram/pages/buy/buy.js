@@ -26,7 +26,8 @@ Page(config.withConfig({
     showRules: false,
   },
 
-  onLoad() {
+  onLoad(options) {
+    this.returnToResult = !!(options && options.from === 'result');
     // 备案模式：深链进入也只显示占位，不拉商品/权益、不出现任何价格
     if (config.isReviewMode()) {
       this.setData({ loading: false });
@@ -68,6 +69,7 @@ Page(config.withConfig({
             name: g.name,
             priceText: buy.fmtYuan(g.priceFen),
             benefit: benefitText(g),
+            quota: g.quota || 0,
             vip: (g.vipDays || 0) > 0,
             best: (g.quota || 0) > 0 && g.quota === maxQuota,
           })),
@@ -85,19 +87,57 @@ Page(config.withConfig({
       });
   },
 
+  /**
+   * 支付回调到达后，短暂轮询权益接口，等发货事务可见再返回结果页。
+   * 这样结果页 onShow 拉取时不会撞上旧数据。
+   */
+  refreshEntitlementAfterPay(expectedPaidQuota, attempts) {
+    const left = attempts == null ? 5 : attempts;
+    return api.fetchEntitlement()
+      .then((res) => {
+        if (res && res.ok) {
+          this.setData({ entitlement: res });
+          if ((res.paidQuota || 0) >= expectedPaidQuota) return true;
+        }
+        if (left <= 1) return false;
+        return new Promise((resolve) => setTimeout(resolve, 800))
+          .then(() => this.refreshEntitlementAfterPay(expectedPaidQuota, left - 1));
+      })
+      .catch(() => {
+        if (left <= 1) return false;
+        return new Promise((resolve) => setTimeout(resolve, 800))
+          .then(() => this.refreshEntitlementAfterPay(expectedPaidQuota, left - 1));
+      });
+  },
+
   onBuy(e) {
     if (this.data.paying) return;
     const goods = this.data.goods[e.currentTarget.dataset.index];
     if (!goods) return;
+    const beforePaidQuota = this.data.entitlement && this.data.entitlement.paidQuota
+      ? this.data.entitlement.paidQuota
+      : 0;
+    const expectedPaidQuota = beforePaidQuota + (goods.quota || 0);
     this.setData({ paying: true });
     buy
       .payGoods({ goodsId: goods.goodsId, priceFen: 0 })
       .then((r) => {
         if (r.ok) {
-          this.load(); // 刷新权益概览
+          return this.refreshEntitlementAfterPay(expectedPaidQuota).then(() => {
+            if (this.returnToResult) {
+              wx.navigateBack({ delta: 1 });
+              return;
+            }
+            return this.load();
+          });
         }
+        return null;
       })
-      .then(() => this.setData({ paying: false }));
+      .then(() => this.setData({ paying: false }))
+      .catch((err) => {
+        console.warn('[photo][buy] 支付后刷新权益失败', err);
+        this.setData({ paying: false });
+      });
   },
 
   onGoOrders() {

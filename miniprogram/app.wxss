@@ -25,15 +25,15 @@
  *    .t-mini   22rpx  脚注、徽标
  *
  *  三、按钮规格（全部胶囊形，高度只有 3 档）
- *    .btn.lg   96rpx / 字号 32rpx / 圆角 48rpx   页面主操作（首页开始制作、下单）
- *    .btn      88rpx / 字号 30rpx / 圆角 44rpx   常规主操作（保存、购买、底部栏）
- *    .btn.sm   68rpx / 字号 26rpx / 圆角 34rpx   卡片内联按钮（立即购买）
+ *    .btn.lg   88rpx / 字号 30rpx / 圆角 44rpx   页面主操作（首页开始制作、下单）
+ *    .btn      80rpx / 字号 28rpx / 圆角 40rpx   常规主操作（保存、购买、底部栏）
+ *    .btn.sm   64rpx / 字号 26rpx / 圆角 32rpx   卡片内联按钮（立即购买）
  *    变体：默认=主蓝渐变实心；.ghost=浅蓝底蓝字；.line=白底描边；.danger=浅红底红字
  *    统一：flex 居中、padding 0 36rpx、margin-top 16rpx、::after 无边框、disabled 0.55
  *
  *  四、间距与圆角
- *    .page  内边距 24rpx / 底部 48rpx ；卡片间距 20rpx ；卡片内边距 28rpx
- *    卡片圆角 20rpx ；内嵌块圆角 16rpx ；胶囊 999rpx
+ *    .page 内边距 18rpx；卡片间距 12rpx；卡片内边距 20rpx
+ *    卡片圆角 16rpx；内嵌块圆角 16rpx；胶囊 999rpx
  * ============================================================
  */
 
@@ -70,14 +70,14 @@ page {
 /* ---------- 布局与卡片（间距按「一屏展示」收紧） ---------- */
 
 .page {
-  padding: 20rpx 20rpx 32rpx;
+  padding: 16rpx 18rpx 28rpx;
 }
 
 .card {
   background: #fff;
-  border-radius: 18rpx;
-  padding: 24rpx;
-  margin-bottom: 16rpx;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 12rpx;
   box-shadow: 0 2rpx 12rpx rgba(23, 78, 166, 0.06);
 }
 
@@ -86,11 +86,11 @@ page {
 }
 
 .card-title {
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 600;
   line-height: 1.4;
   color: var(--c-text);
-  margin-bottom: 12rpx;
+  margin-bottom: 10rpx;
 }
 
 /* 卡片标题右侧可挂小标签 / 折叠开关 */
@@ -98,7 +98,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12rpx;
+  margin-bottom: 10rpx;
 }
 
 .card-title-row .card-title {
@@ -115,10 +115,10 @@ page {
 }
 
 .section-title {
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 600;
   color: var(--c-text);
-  margin: 4rpx 4rpx 12rpx;
+  margin: 2rpx 2rpx 10rpx;
 }
 
 /* 浅蓝信息块（规则说明、提示） */
@@ -126,7 +126,7 @@ page {
   background: var(--c-blue-tint);
   border: 1rpx solid var(--c-blue-line);
   border-radius: 16rpx;
-  padding: 16rpx 18rpx;
+  padding: 14rpx 16rpx;
 }
 
 /* ---------- 键值行 ---------- */
@@ -135,7 +135,7 @@ page {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 8rpx 0;
+  padding: 6rpx 0;
   font-size: 26rpx;
   line-height: 1.5;
   color: var(--c-text-2);
@@ -218,12 +218,12 @@ button.btn,
   justify-content: center;
   box-sizing: border-box;
   width: 100%;
-  height: 88rpx;
+  height: 80rpx;
   padding: 0 36rpx;
-  margin: 12rpx 0 0;
+  margin: 10rpx 0 0;
   border: none;
-  border-radius: 44rpx;
-  font-size: 30rpx;
+  border-radius: 40rpx;
+  font-size: 28rpx;
   font-weight: 500;
   line-height: 1;
   color: #fff;
@@ -270,19 +270,19 @@ button.btn::after,
 }
 
 .btn.lg {
-  height: 96rpx;
-  border-radius: 48rpx;
-  font-size: 32rpx;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 30rpx;
   font-weight: 600;
 }
 
 .btn.sm,
 button.btn.sm {
   width: auto;
-  height: 68rpx;
-  padding: 0 34rpx;
+  height: 64rpx;
+  padding: 0 30rpx;
   margin: 0;
-  border-radius: 34rpx;
+  border-radius: 32rpx;
   font-size: 26rpx;
   font-weight: 600;
   box-shadow: 0 4rpx 12rpx rgba(13, 96, 248, 0.16);
@@ -341,16 +341,16 @@ button.btn.line[disabled] {
   bottom: 0;
   z-index: 20;
   display: flex;
-  gap: 14rpx;
-  padding: 12rpx 20rpx calc(12rpx + env(safe-area-inset-bottom));
+  gap: 10rpx;
+  padding: 10rpx 18rpx calc(10rpx + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 -4rpx 16rpx rgba(23, 78, 166, 0.08);
 }
 
 .action-bar .btn {
-  height: 88rpx;
+  height: 80rpx;
   margin: 0;
-  border-radius: 44rpx;
+  border-radius: 40rpx;
 }
 
 .action-bar .btn.primary {

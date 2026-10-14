@@ -87,6 +87,10 @@ Page(config.withConfig({
       checks,
     });
 
+  },
+
+  /** 首次进入及从购买页返回时都重新拉取，避免结果页保留旧的剩余张数。 */
+  onShow() {
     this.loadEntitlement();
   },
 
@@ -221,7 +225,7 @@ Page(config.withConfig({
       showCancel: false,
       success: (r) => {
         if (r.confirm && cloudReady) {
-          wx.navigateTo({ url: '/pages/buy/buy' });
+          wx.navigateTo({ url: '/pages/buy/buy?from=result' });
         }
       },
     });
@@ -259,7 +263,7 @@ Page(config.withConfig({
   },
 
   onOpenBuy() {
-    wx.navigateTo({ url: '/pages/buy/buy' });
+    wx.navigateTo({ url: '/pages/buy/buy?from=result' });
   },
 
   onHome() {

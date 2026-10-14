@@ -84,6 +84,15 @@ test('home uses native sharing with a valid home route', () => {
   assert.match(template, /open-type="share"/);
 });
 
+test('purchase from result returns after payment and result refreshes entitlement on show', () => {
+  const resultPage = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/result/result.js'), 'utf8');
+  const buyPage = fs.readFileSync(path.join(__dirname, '../miniprogram/pages/buy/buy.js'), 'utf8');
+  assert.match(resultPage, /\/pages\/buy\/buy\?from=result/);
+  assert.match(resultPage, /onShow\(\)\s*\{\s*this\.loadEntitlement\(\)/);
+  assert.match(buyPage, /refreshEntitlementAfterPay/);
+  assert.match(buyPage, /wx\.navigateBack\(\{ delta: 1 \}\)/);
+});
+
 
 test('purchase display follows backend processing limits after refresh', async () => {
   let daily = 30;

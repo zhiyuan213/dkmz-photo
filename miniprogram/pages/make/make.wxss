@@ -3,7 +3,7 @@
 
 /* 给底部固定操作栏留出空间 */
 .page {
-  padding-bottom: calc(136rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(116rpx + env(safe-area-inset-bottom));
 }
 
 /* ---------- 底色选择 ---------- */
@@ -11,7 +11,7 @@
 .bg-row {
   position: relative;
   display: flex;
-  gap: 16rpx;
+  gap: 12rpx;
 }
 
 /* 滑动高亮块样式在 app.wxss 的 .slide-hl（全局唯一来源） */
@@ -23,7 +23,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12rpx 0 10rpx;
+  padding: 9rpx 0 8rpx;
   border: 2rpx solid var(--c-line);
   border-radius: 16rpx;
   transition: transform 0.2s ease;
@@ -39,8 +39,8 @@
 }
 
 .bg-swatch {
-  width: 48rpx;
-  height: 48rpx;
+  width: 44rpx;
+  height: 44rpx;
   border-radius: 50%;
   border: 1rpx solid #e3e8ef;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -53,7 +53,7 @@
 }
 
 .bg-name {
-  margin-top: 8rpx;
+  margin-top: 5rpx;
   font-size: 24rpx;
   line-height: 1.5;
   color: var(--c-text-2);

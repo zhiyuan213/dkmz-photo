@@ -55,9 +55,9 @@
     <!-- 购买须知 + 云端规则合并为一张卡，规则默认折叠 -->
     <view class="card">
       <view class="card-title">购买须知</view>
-      <view class="note">· 高清无水印：去掉预览图上的水印，可直接用于报名打印。</view>
-      <view class="note">· 张数包按导出次数消耗，购买后长期有效、不清零；每天另有 1 次免费导出，且优先使用免费的那 1 次。</view>
-      <view class="note">· 支付由微信虚拟支付完成，订单可在「我的订单」中查询。</view>
+      <view class="note">· 购买后可保存高清无水印照片，张数长期有效。</view>
+      <view class="note">· 每天另送 1 次免费导出，保存时优先使用免费次数。</view>
+      <view class="note">· 微信虚拟支付完成后，可在「我的订单」中查询。</view>
 
       <view class="rule-fold" bindtap="onToggleRules">
         <text>云端制作规则</text>
