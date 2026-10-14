@@ -5,15 +5,20 @@
     <view class="card-title">{{size.name}}</view>
     <view class="kv">
       <text>输出像素</text>
-      <text class="v">{{size.px[0]}} × {{size.px[1]}} px{{size.mm ? ' · ' + size.mm[0] + '×' + size.mm[1] + 'mm' : ''}}</text>
+      <text class="v spec-value">{{size.px[0]}} × {{size.px[1]}} px</text>
+    </view>
+    <view class="kv" wx:if="{{size.mm}}">
+      <text>打印尺寸</text>
+      <text class="v spec-value">{{size.mm[0]}} × {{size.mm[1]}} mm</text>
     </view>
     <view class="kv">
       <text>体积要求</text>
-      <text class="v">{{size.sizeNote}}</text>
+      <text class="v spec-value">{{sizeLimit}}</text>
     </view>
+    <view class="spec-note" wx:if="{{sizeRequirementNote}}">{{sizeRequirementNote}}</view>
     <view class="kv">
       <text>适用场景</text>
-      <text class="v">{{size.usedBy}}</text>
+      <text class="v">{{sizeUsage}}</text>
     </view>
   </view>
 

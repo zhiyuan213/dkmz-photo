@@ -28,6 +28,22 @@ const SHOOT_NOTES = [
   '不得美颜、特效、翻拍，不得 PS 修改人像特征',
 ];
 
+function sizeLimitText(size) {
+  if (size.sizeRule === 'range') return `${size.minSizeKB}–${size.maxSizeKB} KB`;
+  if (size.sizeRule === 'max') {
+    return size.maxSizeKB >= 1024 ? `≤ ${size.maxSizeKB / 1024} MB` : `≤ ${size.maxSizeKB} KB`;
+  }
+  return '以提交平台要求为准';
+}
+
+function sizeRequirementNote(size) {
+  const note = String(size.sizeNote || '');
+  const bracket = note.match(/[（(](.*?)[）)]/);
+  const commaAt = note.indexOf('，');
+  const text = bracket ? bracket[1] : commaAt >= 0 ? note.slice(commaAt + 1) : '';
+  return text.replace(/交管\s*12123/g, '交管 12123').trim();
+}
+
 Page({
   data: {
     size: null,
@@ -76,6 +92,9 @@ Page({
     const camFrameStyle = `width:${frameW}rpx;height:${frameH}rpx;left:${Math.round((750 - frameW) / 2)}rpx;top:24%;`;
     this.setData({
       size,
+      sizeLimit: sizeLimitText(size),
+      sizeRequirementNote: sizeRequirementNote(size),
+      sizeUsage: specs.sizeUsage(size),
       bgOptions,
       bgIndex: found < 0 ? 0 : found,
       camFrameStyle,
