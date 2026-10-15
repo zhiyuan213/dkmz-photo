@@ -398,7 +398,9 @@ class WxSecCheckServiceTest {
         assertEquals(1, lines.size(), "每次检测只应有一行 INFO："
                 + lines.stream().map(ILoggingEvent::getFormattedMessage).collect(Collectors.toList()));
         String line = lines.get(0).getFormattedMessage();
-        assertTrue(line.contains("接口=POST /wxa/media_check_async"), line);
+        // 汇总行必须写明**完整接口地址**（host + path 都在）：云调用内网与 https 直连
+        // 两条通道就是靠这个字段区分的，只留路径线上根本分不清走了哪条
+        assertTrue(line.contains("接口=POST http://api.weixin.qq.com/wxa/media_check_async"), line);
         assertTrue(line.contains("trace_id=" + TRACE), line);
         assertTrue(line.contains("user=oUser123…"), line);
         assertTrue(line.contains("suggest=pass"), line);
@@ -456,7 +458,10 @@ class WxSecCheckServiceTest {
 
         assertEquals(1, lines.size(), "提交失败也要留一行汇总");
         String line = lines.get(0).getFormattedMessage();
-        assertTrue(line.contains("接口=POST /wxa/media_check_async"), line);
+        // 失败时地址照写：85107 恰恰是请求已经发出去、被微信网关拒掉的，
+        // 若写成"未发出"会把排查方向带偏。cloudCall=true 时两条通道都可能试过，故并列。
+        assertTrue(line.contains("接口=POST http://api.weixin.qq.com/wxa/media_check_async 或 "
+                + "https://api.weixin.qq.com/wxa/media_check_async"), line);
         assertTrue(line.contains("提交失败"), line);
         assertTrue(line.contains("85107"), line);
         assertTrue(line.contains("判定=拦截 fail-closed"), line);

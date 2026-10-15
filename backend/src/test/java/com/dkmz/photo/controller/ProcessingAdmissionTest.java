@@ -2,12 +2,18 @@ package com.dkmz.photo.controller;
 
 import com.dkmz.photo.service.*;
 import com.dkmz.photo.support.SegmentRateLimiter;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Base64;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -51,7 +57,7 @@ class ProcessingAdmissionTest {
         when(segment.isEnabled()).thenReturn(true);
         when(secCheck.isEnabled()).thenReturn(true);
         doThrow(new WxSecCheckService.RiskyContentException("risky"))
-                .when(secCheck).checkOrThrow(any(byte[].class), any(), any());
+                .when(secCheck).checkOrThrow(any(byte[].class), any(), any(), any());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck)).build();
@@ -83,7 +89,7 @@ class ProcessingAdmissionTest {
 
         ArgumentCaptor<byte[]> checked = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
-        verify(secCheck).checkOrThrow(checked.capture(), any(), source.capture());
+        verify(secCheck).checkOrThrow(checked.capture(), any(), source.capture(), any());
         assertArrayEquals(new byte[] { 7, 7, 7, 7 }, checked.getValue(), "送检必须是整张原图");
         assertEquals("完整原图", source.getValue());
     }
@@ -100,9 +106,68 @@ class ProcessingAdmissionTest {
 
         ArgumentCaptor<byte[]> checked = ArgumentCaptor.forClass(byte[].class);
         ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
-        verify(secCheck).checkOrThrow(checked.capture(), any(), source.capture());
+        verify(secCheck).checkOrThrow(checked.capture(), any(), source.capture(), any());
         assertArrayEquals(new byte[] { 9, 9, 9 }, checked.getValue());
         assertTrue(source.getValue().contains("缺 checkImage"), source.getValue());
+    }
+
+    /**
+     * 流程序号守门：一次成功的制作请求，日志必须按序打出 1/6 … 6/6。
+     *
+     * 序号是排障入口（先看卡在第几段，再看该段后面的字段）。丢了序号就得靠关键词猜
+     * 日志走到哪一步，所以把六个阶段全部锁死在测试里：任何一行被删、被挪到别处，
+     * 或阶段常量改了名，这里都会失败。
+     */
+    @Test
+    void segmentLogsEveryStageWithSequentialIndex() throws Exception {
+        BdaSegmentService segment = mock(BdaSegmentService.class);
+        PortraitProcessingService processing = mock(PortraitProcessingService.class);
+        PhotoUserVerifier users = mock(PhotoUserVerifier.class);
+        SegmentRateLimiter limiter = mock(SegmentRateLimiter.class);
+        WxSecCheckService secCheck = mock(WxSecCheckService.class);
+        when(users.verify(anyString(), nullable(String.class))).thenReturn("real-user");
+        when(limiter.tryAcquire("real-user")).thenReturn(null);
+        when(segment.isEnabled()).thenReturn(true);
+        // 检测关闭 ⇒ 3/6 打「跳过」行，同样带序号（检测本身的汇总行已由 WxSecCheckServiceTest 覆盖）
+        when(secCheck.isEnabled()).thenReturn(false);
+        when(processing.process(eq("real-user"), anyString(), anyBoolean(), any()))
+                .thenReturn(new PortraitProcessingService.Result("cG5n", "cG5n", false, null));
+
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(
+                new PhotoSegmentController(segment, processing, users,
+                        mock(PortraitCompositeService.class), limiter, secCheck)).build();
+        String b64 = Base64.getEncoder().encodeToString(new byte[] { 1, 2, 3 });
+
+        Logger logger = (Logger) LoggerFactory.getLogger(PhotoSegmentController.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            mvc.perform(post("/api/photo/segment").contentType("application/json")
+                            .content("{\"image\":\"" + b64 + "\",\"loginCode\":\"code\"}"))
+                    .andExpect(jsonPath("$.ok").value(true));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        String joined = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .collect(Collectors.joining("\n"));
+        for (int i = 1; i <= 6; i++) {
+            assertTrue(joined.contains("[photo][流程] " + i + "/6 "),
+                    "日志缺阶段 " + i + "/6，实际输出：\n" + joined);
+        }
+        // 顺序也必须是 1→6，序号错位（比如在某步之前打了下一步）同样不可接受
+        int last = -1;
+        List<String> flowLines = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .filter(m -> m.startsWith("[photo][流程] "))
+                .collect(Collectors.toList());
+        for (String line : flowLines) {
+            int seq = line.charAt("[photo][流程] ".length()) - '0';
+            assertTrue(seq > last, "序号乱序：" + flowLines);
+            last = seq;
+        }
     }
 
     /** 放行路径的公共装配：身份/限流/BDA/检测全部就绪，只留检测闸门给用例断言 */

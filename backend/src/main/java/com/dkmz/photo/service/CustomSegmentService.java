@@ -65,17 +65,25 @@ public class CustomSegmentService {
         opt.setFace(true);
         req.setSegmentationOptions(opt);
 
+        // 日志写明外部接口：域名 + Action + region
+        String api = provider.endpointLabel();
+        String rg = provider.regionLabel();
+        long t0 = System.currentTimeMillis();
         try {
             SegmentCustomizedPortraitPicResponse resp =
                     provider.client().SegmentCustomizedPortraitPic(req);
             String mask = resp.getMaskImage();
             if (mask == null || mask.isEmpty()) {
+                log.warn("外部接口 | POST {} Action=SegmentCustomizedPortraitPic region={} | 结果=异常（未返回 mask）| 耗时={}ms",
+                        api, rg, System.currentTimeMillis() - t0);
                 throw new IllegalStateException("未获取到面部区域");
             }
-            log.info("BDA 自定义分割（Face mask）ok");
+            log.info("外部接口 | POST {} Action=SegmentCustomizedPortraitPic region={} | 用途=面部皮肤 mask | 结果=ok | 耗时={}ms",
+                    api, rg, System.currentTimeMillis() - t0);
             return mask;
         } catch (TencentCloudSDKException e) {
-            log.warn("自定义分割失败: {}", e.getErrorCode());
+            log.warn("外部接口 | POST {} Action=SegmentCustomizedPortraitPic region={} | 结果=失败 {} | 耗时={}ms",
+                    api, rg, e.getErrorCode(), System.currentTimeMillis() - t0);
             throw new IllegalStateException("面部区域识别失败", e);
         }
     }

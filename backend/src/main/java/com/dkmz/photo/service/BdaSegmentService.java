@@ -75,6 +75,10 @@ public class BdaSegmentService {
         req.setScene("GEN");          // 通用场景；证件照不是绿幕
         req.setRspImgType("base64");  // 直接回 base64，省一次 30 分钟有效的临时 URL 下载
 
+        // 日志一律写明"调的是哪个外部接口"：域名 + Action + region（三者缺一，线上就无法对号）
+        String api = provider.endpointLabel();
+        String rg = provider.regionLabel();
+
         long t0 = System.currentTimeMillis();
         SegmentPortraitPicResponse resp;
         try {
@@ -82,22 +86,30 @@ public class BdaSegmentService {
         } catch (TencentCloudSDKException e) {
             // 偶发 ServerError/超时重试一次；其余错误（分辨率、无人脸、欠费）不重试
             if (isRetryable(e.getErrorCode())) {
-                log.warn("BDA 首次调用失败，重试一次: {}", e.getErrorCode());
+                log.warn("外部接口 | POST {} Action=SegmentPortraitPic region={} | 首次调用失败 {}，重试一次",
+                        api, rg, e.getErrorCode());
                 try {
                     resp = provider.client().SegmentPortraitPic(req);
                 } catch (TencentCloudSDKException retryEx) {
+                    log.warn("外部接口 | POST {} Action=SegmentPortraitPic region={} | 结果=失败 {} | 耗时={}ms",
+                            api, rg, retryEx.getErrorCode(), System.currentTimeMillis() - t0);
                     throw new IllegalStateException(mapError(retryEx), retryEx);
                 }
             } else {
+                log.warn("外部接口 | POST {} Action=SegmentPortraitPic region={} | 结果=失败 {} | 耗时={}ms",
+                        api, rg, e.getErrorCode(), System.currentTimeMillis() - t0);
                 throw new IllegalStateException(mapError(e), e);
             }
         }
 
         String image = resp.getResultImage();
         if (image == null || image.isEmpty()) {
+            log.warn("外部接口 | POST {} Action=SegmentPortraitPic region={} | 结果=异常（未返回结果图）| 耗时={}ms",
+                    api, rg, System.currentTimeMillis() - t0);
             throw new IllegalStateException("人像分割未返回结果图");
         }
-        log.info("BDA 人像分割 ok cost={}ms", System.currentTimeMillis() - t0);
+        log.info("外部接口 | POST {} Action=SegmentPortraitPic region={} | 用途=人像分割 | 结果=ok | 耗时={}ms",
+                api, rg, System.currentTimeMillis() - t0);
         // 注意：绝不 log 入参/结果 base64，会把用户人脸写进日志
         return image;
     }

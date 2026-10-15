@@ -50,6 +50,46 @@ const Q_MIN = 0.35;
 const Q_MAX = 0.95;
 const Q_ITER = 7;
 
+/**
+ * 制作流程的 5 个阶段 —— **唯一来源**。
+ * 序号有三个去处，任何一处调顺序都必须只改这里：
+ *   ① 控制台流程日志（`[photo][流程] N/5 …`）；
+ *   ② 结果页步骤条（pages/make/make.js 直接引用本常量，不再自己抄一份）；
+ *   ③ 与真实执行顺序的对照（端上 ①crop → 服务端 ②seccheck → 云端 ③matting）。
+ */
+const STEPS = [
+  { key: 'crop', seq: 1, label: '人脸检测 · 智能裁剪' },
+  { key: 'seccheck', seq: 2, label: '内容安全检测' },
+  { key: 'matting', seq: 3, label: '云端抠图 · 换底美颜' },
+  { key: 'compose', seq: 4, label: '换底合成' },
+  { key: 'size', seq: 5, label: '按尺寸导出' },
+];
+
+/** key → 步骤条目，供流程日志取序号与名称 */
+const STEP_BY_KEY = STEPS.reduce((m, s) => {
+  m[s.key] = s;
+  return m;
+}, {});
+
+/**
+ * 流程日志：进入每个阶段打一行，前面带序号（1/5 … 5/5）。
+ * 只打阶段名与耗时，不含任何图像数据；超时/卡住时照序号就能定位在哪一步。
+ *
+ * 耗时措辞是「间隔」而非「上一步耗时」：日志在**阶段完成时**才打，所以第 3 行的
+ * 间隔 = 上传 + 微信送检 + 云端抠图的合计（这段正是 -600001 超时的所在），
+ * 别当成抠图自己花了这么多。
+ *
+ * @param {string} key        阶段 key（STEPS 之一）
+ * @param {number} sincePrev  距上一条流程日志的毫秒数
+ * @param {number} sinceStart 距开始制作的毫秒数
+ */
+function logStep(key, sincePrev, sinceStart) {
+  const it = STEP_BY_KEY[key];
+  if (!it) return;
+  console.log('[photo][流程] ' + it.seq + '/' + STEPS.length + ' ' + it.label
+    + ' | 间隔 ' + sincePrev + 'ms | 累计 ' + sinceStart + 'ms');
+}
+
 /** 像素值夹取到 [0,255]（去色边反推 F=(C-B·w)/(1-w) 时可能越界） */
 function clamp(v) {
   return v < 0 ? 0 : v > 255 ? 255 : v;
@@ -1001,7 +1041,8 @@ function cloudMatting(req, cloudSegment) {
         // 体积必须可见：callContainer 超限只回一个 -600001，后端与容器日志里毫无痕迹，
         // 所以把三个值打进真机 console —— 下次一眼就能判断是不是又撞了 100KiB。
         const kb = (n) => Math.round(n / 1024);
-        console.log('[photo][pipeline] 上传体积 裁剪图=' + kb(prepared.b64.length) + 'KB 送检图='
+        console.log('[photo][流程] ' + STEP_BY_KEY.seccheck.seq + '/' + STEPS.length
+          + ' 上传体积 裁剪图=' + kb(prepared.b64.length) + 'KB 送检图='
           + kb(checkImage.length) + 'KB 合计=' + kb(prepared.b64.length + checkImage.length)
           + 'KB（CallContainer 文本上限 100KB，本地预算 ' + kb(CLOUD_BODY_BUDGET) + 'KB）');
         return cloudSegment(prepared.b64, extra);
@@ -1068,7 +1109,16 @@ function makeIdPhoto(opts) {
   const ratio = outW / outH;
   const metrics = [];
   const t0 = Date.now();
-  const step = o.onStep || function () {};
+  const notifyStep = o.onStep || function () {};
+  // 每进入一个阶段：先按序号打一行流程日志（1/5 … 5/5），再通知页面推进步骤条。
+  // 日志序号与步骤条同源于 STEPS，永远不会各说各话。
+  let lastStepAt = t0;
+  const step = function (key, info) {
+    const now = Date.now();
+    logStep(key, now - lastStepAt, now - t0);
+    lastStepAt = now;
+    notifyStep(key, info);
+  };
 
   return detectFaceOriginal(o.imgPath)
     .then((fd) => {
@@ -1252,6 +1302,7 @@ function makeIdPhoto(opts) {
 }
 
 module.exports = {
+  STEPS,
   makeIdPhoto,
   detectFaceOriginal,
   cropAndScale,

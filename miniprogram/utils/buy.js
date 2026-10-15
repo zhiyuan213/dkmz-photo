@@ -58,13 +58,22 @@ function requestPay(order) {
       reject(new Error('当前微信版本不支持虚拟支付，请升级微信后重试'));
       return;
     }
+    // 外部接口：微信虚拟支付收银台（原生 SDK 调用，没有 URL）。
+    // signData / paySig / signature 是签名物料，绝不落日志。
+    log('pay', '外部接口 wx.requestVirtualPayment（微信虚拟支付收银台）mode=' + order.mode);
     wx.requestVirtualPayment({
       signData: order.signData,
       paySig: order.paySig,
       signature: order.signature,
       mode: order.mode,
-      success: () => resolve(),
-      fail: (err) => reject(err || { errCode: -1, errMsg: '支付失败' }),
+      success: () => {
+        log('pay', 'wx.requestVirtualPayment ok（弱确认，仍需回后端查单确认发货）');
+        resolve();
+      },
+      fail: (err) => {
+        log('pay', 'wx.requestVirtualPayment 失败', (err && err.errMsg) || err, err && err.errCode);
+        reject(err || { errCode: -1, errMsg: '支付失败' });
+      },
     });
   });
 }

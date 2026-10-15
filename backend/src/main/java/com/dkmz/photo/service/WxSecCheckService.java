@@ -1,6 +1,7 @@
 package com.dkmz.photo.service;
 
 import com.dkmz.photo.support.ImageProbe;
+import com.dkmz.photo.support.Logs;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -122,10 +123,24 @@ public class WxSecCheckService {
     static class Submit {
         final String traceId;
         final String mediaUrl;
+        /** 实际请求的微信接口地址（host + path，不含 query）——汇总日志要如实写出走的是哪条通道 */
+        final String apiUrl;
 
-        Submit(String traceId, String mediaUrl) {
+        Submit(String traceId, String mediaUrl, String apiUrl) {
             this.traceId = traceId;
             this.mediaUrl = mediaUrl;
+            this.apiUrl = apiUrl;
+        }
+    }
+
+    /** 一次外部请求的实际地址与响应体（地址不含 query，绝不带 access_token / pay_sig） */
+    private static class ApiCall {
+        final String url;
+        final String body;
+
+        ApiCall(String url, String body) {
+            this.url = url;
+            this.body = body;
         }
     }
 
@@ -200,6 +215,16 @@ public class WxSecCheckService {
      *               （裁剪工作图长边 960/1280，手机原图 3000+，一眼可分）就是证据。
      */
     public void checkOrThrow(byte[] image, String openid, String source) throws RiskyContentException {
+        checkOrThrow(image, openid, source, null);
+    }
+
+    /**
+     * 同上，另带流程阶段前缀（如 {@code [photo][流程] 3/6 内容安全检测}），
+     * 让汇总行直接接进流水线序号，不必再多打一行重复的步骤日志；
+     * 自检接口（sec-check selftest）不属于制作流程，传 {@code null} 即可。
+     */
+    public void checkOrThrow(byte[] image, String openid, String source, String flowTag)
+            throws RiskyContentException {
         if (!enabled) {
             log.warn("内容安全检测已被开关关闭（SEC_CHECK_ENABLED=false）—— 仅限本地开发");
             return;
@@ -212,14 +237,16 @@ public class WxSecCheckService {
         } catch (RuntimeException e) {
             // 提交阶段就失败（白名单未登记 85107 / 缺 openid / 缺公网基址）也必须留一行汇总，
             // 否则这条检测在日志里只剩调用方的异常栈，接口与结果对不上号。
-            summary("-", openid, img, "提交失败：" + brief(e.getMessage(), 200),
+            // 地址照实写：失败时往往**请求已经发出去了**（85107 就是被网关拒的），
+            // 写成"未发出"会把排查方向带偏。
+            summary(flowTag, attemptedApiUrls(), "-", openid, img, "提交失败：" + brief(e.getMessage(), 200),
                     System.currentTimeMillis() - startedAt, "拦截 fail-closed");
             throw e;
         }
         Verdict v = awaitVerdict(submit.traceId, waitMs);
         long cost = System.currentTimeMillis() - startedAt;
         if (v == null) {
-            summary(submit.traceId, openid, img,
+            summary(flowTag, submit.apiUrl, submit.traceId, openid, img,
                     "超时未回结果（" + (waitMs / 1000) + "s 内未收到微信推送）", cost, "拦截 fail-closed");
             throw new IllegalStateException(
                     "内容安全检测未在规定时间内返回结果（" + (waitMs / 1000) + "s）：未收到微信结果推送，"
@@ -227,23 +254,43 @@ public class WxSecCheckService {
         }
         if (v.failed) {
             // 微信侧检测失败（拉不到图 / 内部错误）：不是"没结果"，要如实报出来
-            summary(submit.traceId, openid, img,
+            summary(flowTag, submit.apiUrl, submit.traceId, openid, img,
                     "微信侧失败 errcode=" + v.errcode + " " + brief(v.detail, 200), cost, "拦截 fail-closed");
             throw new IllegalStateException("微信侧检测失败 errcode=" + v.errcode + " " + v.detail);
         }
         if ("pass".equalsIgnoreCase(v.suggest)) {
-            summary(submit.traceId, openid, img, describe(v), cost, "放行");
+            summary(flowTag, submit.apiUrl, submit.traceId, openid, img, describe(v), cost, "放行");
             return;
         }
         // risky（明确违规）与 review（疑似违规）都按拦截处理
-        summary(submit.traceId, openid, img, describe(v), cost, "拦截");
+        summary(flowTag, submit.apiUrl, submit.traceId, openid, img, describe(v), cost, "拦截");
         throw new RiskyContentException(v.suggest);
     }
 
-    /** 单行汇总：接口 + trace_id + 用户 + 送检图 + 结果 + 耗时 + 判定 */
-    private void summary(String traceId, String openid, String img, String verdict, long costMs, String action) {
-        log.info("内容安全检测 | 接口=POST {} | trace_id={} | user={} | 图片={} | 结果={} | 耗时={}ms | 判定={}",
-                PATH_ASYNC, traceId, userTag(openid), img, verdict, costMs, action);
+    /**
+     * 提交失败时日志里写的接口地址：本方法可能依次试过云调用内网与 https 直连两条通道，
+     * 所以两条都列出来，不臆断"用了哪一条"。缺配置时（cloudCall=false）只列 https。
+     */
+    private String attemptedApiUrls() {
+        return cloudCall
+                ? HOST_CLOUD + PATH_ASYNC + " 或 " + HOST_HTTPS + PATH_ASYNC
+                : HOST_HTTPS + PATH_ASYNC;
+    }
+
+    /**
+     * 单行汇总：接口地址 + trace_id + 用户 + 送检图 + 结果 + 耗时 + 判定。
+     * 地址是**实际请求的完整地址**（含 host），一眼能分清走的是云调用内网还是 https 直连 ——
+     * 85107（未登记白名单）与降级都靠这个字段判断。不含 query（access_token / pay_sig 绝不落日志）。
+     *
+     * @param flowTag 流程阶段前缀（{@code [photo][流程] 3/6 内容安全检测}）；为 null 时退回接口名，
+     *                自检与单测走这条路径。
+     */
+    private void summary(String flowTag, String apiUrl, String traceId, String openid, String img,
+                         String verdict, long costMs, String action) {
+        log.info("{} | 接口=POST {} | trace_id={} | user={} | 图片={} | 结果={} | 耗时={}ms | 判定={}",
+                flowTag == null || flowTag.isEmpty() ? "内容安全检测" : flowTag,
+                apiUrl == null ? PATH_ASYNC + "（地址未知）" : apiUrl,
+                traceId, userTag(openid), img, verdict, costMs, action);
     }
 
     /**
@@ -326,7 +373,8 @@ public class WxSecCheckService {
             throw new IllegalStateException("检测请求构造失败", e);
         }
 
-        String respBody = callJson(json, PATH_ASYNC);
+        ApiCall call = callJson(json, PATH_ASYNC);
+        String respBody = call.body;
         String traceId;
         int errcode;
         try {
@@ -334,16 +382,17 @@ public class WxSecCheckService {
             errcode = node.path("errcode").asInt(-1);
             traceId = node.path("trace_id").asText("");
         } catch (Exception e) {
-            throw new IllegalStateException("检测响应解析失败: " + respBody, e);
+            throw new IllegalStateException("检测响应解析失败 接口=" + call.url + " body=" + respBody, e);
         }
         if (errcode != 0 || traceId.isEmpty()) {
-            throw new IllegalStateException("提交检测失败 errcode=" + errcode + " body=" + respBody);
+            throw new IllegalStateException("提交检测失败 接口=" + call.url
+                    + " errcode=" + errcode + " body=" + respBody);
         }
         pendings.put(traceId, new Pending(System.currentTimeMillis() + RESULT_TTL_MS));
         // 汇总日志由 checkOrThrow 统一输出（单行含接口/结果/耗时），此处只留调试细节
-        log.debug("内容安全检测已提交 trace_id={} media_url={}（等微信推送，最长 {}ms）",
-                traceId, mediaUrl, waitMs);
-        return new Submit(traceId, mediaUrl);
+        log.debug("内容安全检测已提交 接口=POST {} trace_id={} media_url={}（等微信推送，最长 {}ms）",
+                call.url, traceId, mediaUrl, waitMs);
+        return new Submit(traceId, mediaUrl, call.url);
     }
 
     /**
@@ -508,6 +557,7 @@ public class WxSecCheckService {
             Submit s = submit(image, openid);
             out.put("traceId", s.traceId);
             out.put("mediaUrl", s.mediaUrl);
+            out.put("apiUrl", s.apiUrl);
             out.put("submitted", true);
             Verdict v = awaitVerdict(s.traceId, waitMs);
             if (v == null) {
@@ -540,27 +590,34 @@ public class WxSecCheckService {
 
     // ------------------------------------------------------------ 通道
 
-    /** 提交接口调用：①云调用 → ②https+token（40001/42001 刷新重试一次） */
-    private String callJson(String json, String path) {
+    /**
+     * 提交接口调用：①云调用 → ②https+token（40001/42001 刷新重试一次）。
+     * 返回的 {@link ApiCall#url} 只含 host + path —— access_token 在 query 里，绝不进日志。
+     */
+    private ApiCall callJson(String json, String path) {
         Exception cloudErr = null;
         if (cloudCall) {
+            String cloudUrl = HOST_CLOUD + path;
             try {
-                return postJson(json, HOST_CLOUD + path, true);
+                return new ApiCall(cloudUrl, postJson(json, cloudUrl, true));
             } catch (Exception e) {
                 cloudErr = e;
-                log.warn("mediaCheckAsync 云托管内网通道失败，降级 https：{}", e.toString());
+                log.warn("外部接口 | POST {}（云托管内网通道）调用失败，降级直连 {}：{}",
+                        cloudUrl, HOST_HTTPS + path, Logs.safe(e));
             }
         }
         String token;
         try {
             token = tokens.get();
         } catch (Exception e) {
-            throw new IllegalStateException("取 access_token 失败：" + e.getMessage()
-                    + (cloudErr == null ? "" : "；云调用通道失败：" + cloudErr.getMessage()), e);
+            throw new IllegalStateException("取 access_token 失败（接口 " + HOST_HTTPS + path + "）："
+                    + Logs.safe(e.getMessage())
+                    + (cloudErr == null ? "" : "；云调用通道失败：" + Logs.safe(cloudErr.getMessage())), e);
         }
+        String url = HOST_HTTPS + path;
         for (int i = 0; i < 2; i++) {
             try {
-                return postJson(json, HOST_HTTPS + path + "?access_token=" + token, false);
+                return new ApiCall(url, postJson(json, url + "?access_token=" + token, false));
             } catch (Exception e) {
                 if (i == 0 && e.getMessage() != null && (e.getMessage().contains("40001") || e.getMessage().contains("42001"))) {
                     try {
@@ -570,11 +627,11 @@ public class WxSecCheckService {
                         throw new IllegalStateException("刷新 access_token 失败：" + re.getMessage(), re);
                     }
                 }
-                throw new IllegalStateException("检测接口调用失败：" + e.getMessage()
-                        + (cloudErr == null ? "" : "；云调用通道失败：" + cloudErr.getMessage()), e);
+                throw new IllegalStateException("检测接口调用失败（接口 " + url + "）：" + Logs.safe(e.getMessage())
+                        + (cloudErr == null ? "" : "；云调用通道失败：" + Logs.safe(cloudErr.getMessage())), e);
             }
         }
-        throw new IllegalStateException("检测接口调用失败");
+        throw new IllegalStateException("检测接口调用失败（接口 " + url + "）");
     }
 
     /**
@@ -589,15 +646,26 @@ public class WxSecCheckService {
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() != 200) {
-            throw new IllegalStateException("HTTP " + resp.statusCode() + " body=" + resp.body());
+            throw new IllegalStateException("HTTP " + resp.statusCode() + " 接口=" + safeUrl(url)
+                    + " body=" + resp.body());
         }
         if (cloudChannel && resp.headers().firstValue("x-openapi-seqid").isEmpty()) {
             // 走通云调用链路时微信会回带这个头；缺失 = 请求没经过「开放接口服务」，
             // 多半是控制台开关没开 / 接口没登记进微信令牌权限配置
-            log.warn("mediaCheckAsync 响应缺 x-openapi-seqid —— 未走云托管云调用链路，请检查控制台"
-                    + "「服务管理-云调用-开放接口服务」开关与「微信令牌权限配置」中的 /wxa/media_check_async");
+            log.warn("外部接口 | POST {} 响应缺 x-openapi-seqid —— 未走云托管云调用链路，请检查控制台"
+                    + "「服务管理-云调用-开放接口服务」开关与「微信令牌权限配置」中的 {}",
+                    safeUrl(url), PATH_ASYNC);
         }
         return resp.body();
+    }
+
+    /** 去掉 query 的接口地址，供日志使用：access_token / pay_sig / secret 等一律不落日志 */
+    static String safeUrl(String url) {
+        if (url == null) {
+            return "?";
+        }
+        int q = url.indexOf('?');
+        return q < 0 ? url : url.substring(0, q);
     }
 
     // ------------------------------------------------------------ 工具

@@ -4,13 +4,9 @@ const api = require('../../utils/api');
 
 const RESULT_KEY = 'dkmz_last_result';
 
-const STEPS = [
-  { key: 'crop', label: '人脸检测 · 智能裁剪' },
-  { key: 'seccheck', label: '内容安全检测' },
-  { key: 'matting', label: '云端抠图 · 换底美颜' },
-  { key: 'compose', label: '换底合成' },
-  { key: 'size', label: '按尺寸导出' },
-];
+// 步骤条与流水线流程日志共用同一份定义（pipeline.STEPS 里的 seq 就是日志序号），
+// 不再各抄一份 —— 顺序/文案要改只改 pipeline.js 一处。
+const STEPS = pipeline.STEPS;
 
 /**
  * 通用拍摄要求。

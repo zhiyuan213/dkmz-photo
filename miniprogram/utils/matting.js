@@ -118,12 +118,18 @@ function ensureModel(options) {
     if (r.exists && !opts.force) {
       return { path: target, size: r.size, cached: true, costMs: 0 };
     }
+    // 模型是唯一一个运行时外部下载：地址必须由后端下发，本地只留联调兜底。
+    // 把地址打进日志，是为了出事时一眼看出"到底从哪儿拉的" —— 历史上这里写死过局域网 IP。
+    console.log('[photo][外部接口] wx.downloadFile 模型 ' + url
+      + '（来源：' + (opts.url ? '后端下发' : '本地默认，仅联调用') + '）');
     return new Promise((resolve, reject) => {
       const t0 = Date.now();
       const task = wx.downloadFile({
         url,
         success: (res) => {
           if (res.statusCode !== 200) {
+            console.warn('[photo][外部接口] wx.downloadFile 模型失败 地址=' + url
+              + ' HTTP ' + res.statusCode);
             reject(new Error(`模型下载失败 HTTP ${res.statusCode}`));
             return;
           }
@@ -131,12 +137,24 @@ function ensureModel(options) {
           wx.getFileSystemManager().copyFile({
             srcPath: res.tempFilePath,
             destPath: target,
-            success: () =>
-              resolve({ path: target, size: fileSize(target), cached: false, costMs: Date.now() - t0 }),
-            fail: (e) => reject(new Error('模型保存失败：' + JSON.stringify(e))),
+            success: () => {
+              const size = fileSize(target);
+              console.log('[photo][外部接口] wx.downloadFile 模型 ok 地址=' + url
+                + ' 体积=' + Math.round(size / 1024) + 'KB 耗时=' + (Date.now() - t0) + 'ms');
+              resolve({ path: target, size, cached: false, costMs: Date.now() - t0 });
+            },
+            fail: (e) => {
+              console.warn('[photo][外部接口] wx.downloadFile 模型保存失败 地址=' + url
+                + '：' + JSON.stringify(e));
+              reject(new Error('模型保存失败：' + JSON.stringify(e)));
+            },
           });
         },
-        fail: (e) => reject(new Error('模型下载失败：' + JSON.stringify(e))),
+        fail: (e) => {
+          console.warn('[photo][外部接口] wx.downloadFile 模型失败 地址=' + url
+            + '：' + JSON.stringify(e));
+          reject(new Error('模型下载失败：' + JSON.stringify(e)));
+        },
       });
       if (onProgress) {
         task.onProgressUpdate((p) =>

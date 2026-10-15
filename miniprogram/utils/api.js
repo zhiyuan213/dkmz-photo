@@ -75,6 +75,8 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
     }
     if (cloudReady()) {
       ensureInit();
+      // 日志里的完整请求地址：云托管通道没有 http 地址，用 cloud://环境/服务/路径 表达
+      const addr = 'cloud://' + ENV_ID + '/' + SERVICE + path;
       wx.cloud.callContainer({
         config: { env: ENV_ID },
         path,
@@ -85,7 +87,7 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
-            console.log('[photo][api]', path, '->', JSON.stringify(path === '/api/photo/segment'
+            console.log('[photo][api]', method + ' ' + addr, '->', JSON.stringify(path === '/api/photo/segment'
               ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
               : body).slice(0, 300));
             resolve(body);
@@ -94,7 +96,7 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
           }
         },
         fail: (err) => {
-          console.warn('[photo][api] callContainer 失败', path, err);
+          console.warn('[photo][api] callContainer 失败', method + ' ' + addr, err);
           const raw = (err && err.errMsg) || '云托管调用失败';
           // -600001 是链路层拒绝，最常见的两个原因：
           //   ① 请求体超 100KiB 文本上限（带图片的接口最容易踩）
@@ -109,15 +111,16 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
       return;
     }
     if (httpReady()) {
+      const addr = BASE_URL + path;
       wx.request({
-        url: BASE_URL + path,
+        url: addr,
         method,
         data,
         timeout: timeoutMs,
         success: (res) => {
           const body = res.data;
           if (body && typeof body === 'object') {
-            console.log('[photo][api]', path, '->', JSON.stringify(path === '/api/photo/segment'
+            console.log('[photo][api]', method + ' ' + addr, '->', JSON.stringify(path === '/api/photo/segment'
               ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
               : body).slice(0, 300));
             resolve(body);
@@ -126,7 +129,7 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
           }
         },
         fail: (err) => {
-          console.warn('[photo][api] http 失败', path, err);
+          console.warn('[photo][api] http 失败', method + ' ' + addr, err);
           reject({ code: 'HTTP_FAIL', msg: (err && err.errMsg) || '请求失败', raw: err });
         },
       });

@@ -24,6 +24,9 @@ public class BdaClientProvider {
 
     private static final Logger log = LoggerFactory.getLogger(BdaClientProvider.class);
 
+    /** 腾讯云 BDA 的 SDK 默认接入域名（未配 BDAB_ENDPOINT 时走它） */
+    private static final String DEFAULT_ENDPOINT = "bda.tencentcloudapi.com";
+
     @Value("${photo.bda.enabled:false}")
     private boolean enabled;
 
@@ -45,6 +48,19 @@ public class BdaClientProvider {
         return enabled && notBlank(secretId) && notBlank(secretKey);
     }
 
+    /**
+     * 实际调用的接口域名（未配 BDAB_ENDPOINT 时是 SDK 默认域名），供日志写明"调的是哪个外部接口"。
+     * 只有域名，不含密钥；容器直连 https 报 PKIX 时靠它对比内网域名。
+     */
+    public String endpointLabel() {
+        return notBlank(endpoint) ? endpoint.trim() : DEFAULT_ENDPOINT;
+    }
+
+    /** 调用区域（BDA 仅 ap-beijing / ap-guangzhou / ap-shanghai） */
+    public String regionLabel() {
+        return region;
+    }
+
     public BdaClient client() {
         if (this.client == null) {
             synchronized (this) {
@@ -59,8 +75,8 @@ public class BdaClientProvider {
                     ClientProfile profile = new ClientProfile();
                     profile.setHttpProfile(http);
                     this.client = new BdaClient(cred, region, profile);
-                    log.info("BdaClient 初始化 region={} endpoint={}",
-                            region, notBlank(endpoint) ? endpoint : "(默认)");
+                    log.info("外部接口 | POST {} | 用途=腾讯云 BDA 客户端初始化 | region={}",
+                            endpointLabel(), region);
                 }
             }
         }

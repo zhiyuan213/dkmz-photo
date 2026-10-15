@@ -7,6 +7,7 @@ import com.dkmz.photo.entity.PhotoPayOrder;
 import com.dkmz.photo.entity.PhotoPayRefund;
 import com.dkmz.photo.mapper.PhotoPayOrderMapper;
 import com.dkmz.photo.mapper.PhotoPayRefundMapper;
+import com.dkmz.photo.support.Logs;
 import com.dkmz.photo.support.PaySignUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +58,12 @@ public class PhotoPayService {
 
     private static final String URI_REQUEST_PAYMENT = "requestVirtualPayment";
     private static final String URI_QUERY_ORDER = "/xpay/query_order";
+
+    /** 查单接口地址（两条通道都要能在日志里认出来）；不带 query —— pay_sig / access_token 绝不落日志 */
+    private static final String API_QUERY_ORDER_LABEL =
+            "http://api.weixin.qq.com" + URI_QUERY_ORDER + " 或 https://api.weixin.qq.com" + URI_QUERY_ORDER;
+    /** 登录换 openid 的接口地址；query 里有 secret 与 js_code，日志只用这个不带 query 的地址 */
+    private static final String API_CODE2SESSION = "https://api.weixin.qq.com/sns/jscode2session";
 
     private static final long QUERY_BACKOFF_MS = 5 * 60_000L;
     private static final int QUERY_ERR_ORDER_NOT_FOUND = 268490002;
@@ -207,7 +214,8 @@ public class PhotoPayService {
         try {
             session = code2session(code);
         } catch (Exception e) {
-            log.error("支付下单 code2session 失败: {}", e.toString());
+            log.error("外部接口 | GET {} | 用途=下单换 openid | 结果=失败：{}",
+                    API_CODE2SESSION, Logs.safe(e));
             return fail("SESSION_FAILED", "获取登录态失败，请重新进入小程序后重试");
         }
 
@@ -643,7 +651,8 @@ public class PhotoPayService {
                     }
                 }
             } catch (Exception e) {
-                log.warn("查单异常 order={}: {}", o.getOutTradeNo(), e.toString());
+                log.warn("外部接口 | POST {} | 用途=补单扫描查单 | order={} | 结果=异常：{}",
+                        API_QUERY_ORDER_LABEL, o.getOutTradeNo(), Logs.safe(e));
             }
         }
 
@@ -660,7 +669,8 @@ public class PhotoPayService {
                     refunded++;
                 }
             } catch (Exception e) {
-                log.warn("退款兜底查单异常 order={}: {}", o.getOutTradeNo(), e.toString());
+                log.warn("外部接口 | POST {} | 用途=退款兜底查单 | order={} | 结果=异常：{}",
+                        API_QUERY_ORDER_LABEL, o.getOutTradeNo(), Logs.safe(e));
             }
         }
 
@@ -710,7 +720,8 @@ public class PhotoPayService {
             return null;
         }
         if (st < 0) {
-            log.info("查单确认未支付（微信侧无此订单）order={}", outTradeNo);
+            log.info("外部接口 | POST {} | 用途=查单核验 | order={} | 结果=微信侧无此订单（未支付）",
+                    API_QUERY_ORDER_LABEL, outTradeNo);
             return Boolean.FALSE;
         }
         return isPaidStatus(st);
@@ -732,8 +743,8 @@ public class PhotoPayService {
                 return -1;
             }
             if (errcode != 0) {
-                log.warn("查单返回业务错误 order={} errcode={} errmsg={}",
-                        outTradeNo, errcode, r.path("errmsg").asText(""));
+                log.warn("外部接口 | POST {} | 用途=查单核验 | order={} | 结果=业务错误 errcode={} {}",
+                        API_QUERY_ORDER_LABEL, outTradeNo, errcode, r.path("errmsg").asText(""));
                 return null;
             }
             JsonNode st = r.path("order").path("status");
@@ -743,7 +754,8 @@ public class PhotoPayService {
             }
             return st.asInt();
         } catch (Exception e) {
-            log.warn("查单异常（云调用与 https 均不可用）: {}", e.toString());
+            log.warn("外部接口 | POST {} | 用途=查单核验 | 结果=异常（云调用与 https 两条通道均不可用）：{}",
+                    API_QUERY_ORDER_LABEL, Logs.safe(e));
             backoff(e.getClass().getSimpleName());
             return null;
         }
@@ -764,10 +776,13 @@ public class PhotoPayService {
         String paySig = PaySignUtil.hmacSha256Hex(currentAppKey(), URI_QUERY_ORDER + "&" + bodyJson);
 
         if (cloudCallFirst) {
+            String cloudUrl = "http://api.weixin.qq.com" + URI_QUERY_ORDER;
             try {
-                return postJson("http://api.weixin.qq.com" + URI_QUERY_ORDER + "?pay_sig=" + paySig, bodyJson);
+                // pay_sig 在 query 里，日志只用不带 query 的地址
+                return postJson(cloudUrl + "?pay_sig=" + paySig, bodyJson);
             } catch (Exception e) {
-                log.warn("云调用查单请求失败，降级直连 https: {}", e.toString());
+                log.warn("外部接口 | POST {}（云托管内网通道）查单失败，降级直连 {}：{}",
+                        cloudUrl, "https://api.weixin.qq.com" + URI_QUERY_ORDER, Logs.safe(e));
             }
         }
         String url = "https://api.weixin.qq.com" + URI_QUERY_ORDER
@@ -808,11 +823,12 @@ public class PhotoPayService {
             try {
                 body = get("http://api.weixin.qq.com/sns/jscode2session?" + query);
             } catch (Exception e) {
-                log.warn("code2session 云调用通道异常，降级直连 https: {}", e.toString());
-                body = get("https://api.weixin.qq.com/sns/jscode2session?" + query);
+                log.warn("外部接口 | GET http://api.weixin.qq.com/sns/jscode2session（云托管内网通道）失败，"
+                        + "降级直连 {}：{}", API_CODE2SESSION, Logs.safe(e));
+                body = get(API_CODE2SESSION + "?" + query);
             }
         } else {
-            body = get("https://api.weixin.qq.com/sns/jscode2session?" + query);
+            body = get(API_CODE2SESSION + "?" + query);
         }
         JsonNode node = om.readTree(body);
         if (!node.hasNonNull("session_key")) {

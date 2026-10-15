@@ -86,8 +86,11 @@ public class PhotoSecCheckController {
             out.put("sampleBytes", sample.length);
             Map<String, Object> result = secCheck.diagnose(sample, who);
             out.putAll(result);
-            log.info("内容安全检测 | 来源=自检 | 接口=POST /wxa/media_check_async | trace_id={} | "
+            // 地址取实际请求到的那条（云调用内网 / https 直连），与检测汇总日志同源
+            Object apiUrl = result.get("apiUrl");
+            log.info("内容安全检测 | 来源=自检 | 接口=POST {} | trace_id={} | "
                             + "结果=suggest:{} errcode:{} | received={} | ok={} | msg={}",
+                    apiUrl == null ? "/wxa/media_check_async（请求未发出）" : apiUrl,
                     result.get("traceId"), result.get("suggest"), result.get("errcode"),
                     result.get("received"), result.get("ok"), result.get("msg"));
         } catch (Exception e) {

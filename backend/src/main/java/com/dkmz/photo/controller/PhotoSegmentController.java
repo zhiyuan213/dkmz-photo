@@ -7,6 +7,8 @@ import com.dkmz.photo.service.PhotoUserVerifier;
 import com.dkmz.photo.service.WxSecCheckService;
 import com.dkmz.photo.support.AlphaExtractor;
 import com.dkmz.photo.support.BackgroundColorEstimator;
+import com.dkmz.photo.support.FlowLog;
+import com.dkmz.photo.support.Logs;
 import com.dkmz.photo.support.OpenidSupport;
 import com.dkmz.photo.support.SegmentRateLimiter;
 import org.slf4j.Logger;
@@ -47,25 +49,41 @@ public class PhotoSegmentController {
                                        @RequestHeader(value = "X-WX-FROM-OPENID", required = false) String fromOpenid,
                                        @RequestHeader(value = "X-WX-OPENID", required = false) String openid) {
         Map<String, Object> out = new LinkedHashMap<>();
-        // 真实身份来自一次性登录凭证；平台请求头只用于交叉校验。
+        long flowStart = System.currentTimeMillis();
+
+        // ---- 1/6 身份校验：真实身份来自一次性登录凭证；平台请求头只用于交叉校验 ----
+        long t = System.currentTimeMillis();
         String user;
         try {
             Object code = body == null ? null : body.get("loginCode");
             user = users.verify(code instanceof String ? (String) code : null,
                     OpenidSupport.resolve(fromOpenid, openid, null));
         } catch (Exception e) {
+            log.warn("{} | 结果=失败 {} | 耗时={}ms", FlowLog.tag(FlowLog.LOGIN),
+                    Logs.safe(e.toString()), System.currentTimeMillis() - t);
             out.put("ok", false); out.put("code", "LOGIN_REQUIRED"); out.put("msg", e.getMessage());
             return out;
         }
+        log.info("{} | user={} | 结果=ok | 耗时={}ms", FlowLog.tag(FlowLog.LOGIN),
+                userTag(user), System.currentTimeMillis() - t);
+
+        // ---- 2/6 限流校验：全站共享的持久化限额 ----
+        t = System.currentTimeMillis();
         String denied = rateLimiter.tryAcquire(user);
         if (denied != null) {
-            log.warn("segment 限流 user={}", userTag(user));
+            log.warn("{} | user={} | 结果=拒绝（{}）| 耗时={}ms", FlowLog.tag(FlowLog.RATE_LIMIT),
+                    userTag(user), denied, System.currentTimeMillis() - t);
             out.put("ok", false);
             out.put("code", "RATE_LIMITED");
             out.put("msg", denied);
             return out;
         }
+        log.info("{} | user={} | 结果=放行 | 耗时={}ms", FlowLog.tag(FlowLog.RATE_LIMIT),
+                userTag(user), System.currentTimeMillis() - t);
+
         if (!segmentService.isEnabled()) {
+            log.warn("{} | user={} | 结果=中止（云端精修未开通 BDA_DISABLED）", FlowLog.tag(FlowLog.PORTRAIT),
+                    userTag(user));
             out.put("ok", false);
             out.put("code", "BDA_DISABLED");
             out.put("msg", "云端精修尚未开通");
@@ -84,17 +102,21 @@ public class PhotoSegmentController {
         boolean alphaOnly = body != null && Boolean.TRUE.equals(body.get("alphaOnly"));
         int outTop = toInt(body == null ? null : body.get("outTop"), 0);
         if (image == null || image.isEmpty()) {
+            log.warn("{} | user={} | 结果=中止（缺少 image 参数，无图可送检）",
+                    FlowLog.tag(FlowLog.SEC_CHECK), userTag(user));
             out.put("ok", false);
             out.put("code", "BAD_REQUEST");
             out.put("msg", "缺少 image 参数");
             return out;
         }
 
-        // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
+        // ---- 3/6 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
         // fail-closed：检测通道异常 / 结果超时未回 → 拒绝处理，绝不放过风险图。
         // 送检素材必须是**完整原图**（checkImage），不是裁剪后的工作图：
         // 证件照构图只保留头肩，裁剪图会"洗掉"落在框外的违规内容（旧实现的实际漏检原因）。
         // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填），不用可能为空的请求头。
+        // 本阶段的汇总行（含接口地址/结果/判定）由 WxSecCheckService 直接带序号输出，
+        // 这里不再重复打一行，避免同一件事在日志里出现两次。
         boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
@@ -105,21 +127,23 @@ public class PhotoSegmentController {
                     log.warn("segment 未收到 checkImage（完整原图），退化为检测裁剪工作图 user={}", userTag(user));
                 }
                 secCheck.checkOrThrow(decodeImage(hasWholePicture ? checkImage : image), user,
-                        hasWholePicture ? "完整原图" : "裁剪工作图(缺 checkImage!)");
+                        hasWholePicture ? "完整原图" : "裁剪工作图(缺 checkImage!)",
+                        FlowLog.tag(FlowLog.SEC_CHECK));
                 secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
-                log.warn("segment 拦截违规图片 user={} suggest={}", userTag(user), e.getSuggest());
+                // 拦截 / 不可用的汇总行已由 WxSecCheckService 带序号输出（含 label 与判定），此处只回响应
                 out.put("ok", false);
                 out.put("code", "RISKY_CONTENT");
                 out.put("msg", "图片内容涉嫌违规，请更换照片后重试");
                 return out;
             } catch (Exception e) {
-                log.warn("segment 内容检测不可用 user={}: {}", userTag(user), e.toString());
                 out.put("ok", false);
                 out.put("code", "SEC_CHECK_UNAVAILABLE");
                 out.put("msg", "内容安全检测暂不可用，请稍后重试");
                 return out;
             }
+        } else {
+            log.info("{} | 结果=跳过（SEC_CHECK_ENABLED=false，仅限本地开发）", FlowLog.tag(FlowLog.SEC_CHECK));
         }
 
         long t0 = System.currentTimeMillis();
@@ -129,12 +153,15 @@ public class PhotoSegmentController {
         if (alphaOnly) {
             try {
                 String png = processing.process(user, image, false, null).png();
+                log.info("{} | user={} | 结果=ok（不美肤，仅分割）| 耗时={}ms", FlowLog.tag(FlowLog.PORTRAIT),
+                        userTag(user), System.currentTimeMillis() - t0);
                 AlphaExtractor.Result a = AlphaExtractor.extract(png);
                 long cost = System.currentTimeMillis() - t0;
+                log.info("{} | 结果=跳过（只替换背景，不铺底色）", FlowLog.tag(FlowLog.COMPOSE));
                 // 只记尺寸/体积/耗时，绝不落图片内容
-                log.info("segment alphaOnly user={} {}x{} alphaKB={} cost={}ms",
-                        userTag(openid), a.width, a.height,
-                        Math.round(a.base64.length() / 1024.0), cost);
+                log.info("{} | user={} | 结果=ok（alpha 灰度图）| 尺寸={}x{} alphaKB={} | 处理={}ms 总={}ms",
+                        FlowLog.tag(FlowLog.OUTPUT), userTag(user), a.width, a.height,
+                        Math.round(a.base64.length() / 1024.0), cost, System.currentTimeMillis() - flowStart);
                 out.put("ok", true);
                 out.put("alpha", a.base64);
                 out.put("width", a.width);
@@ -144,7 +171,7 @@ public class PhotoSegmentController {
                 if (secChecked) out.put("secChecked", true);
                 return out;
             } catch (Exception e) {
-                return fail(out, e);
+                return fail(out, e, FlowLog.PORTRAIT);
             }
         }
 
@@ -154,50 +181,70 @@ public class PhotoSegmentController {
             String beautySkippedReason = portrait.beautySkippedReason();
             String input = portrait.input();
             String png = portrait.png();
-            String payload = wantFinished ? compositeService.composite(png, bgHex, outTop, input) : png;
             long cost = System.currentTimeMillis() - t0;
-            // 只记 openid 前缀与耗时，不落任何图片内容
-            log.info("segment 调用 user={} beauty={} finished={} cost={}ms",
-                    userTag(openid), beautyApplied, wantFinished, cost);
+            log.info("{} | user={} | beauty={} | 结果=ok{} | 耗时={}ms", FlowLog.tag(FlowLog.PORTRAIT),
+                    userTag(user), beautyApplied,
+                    beautySkippedReason == null ? "" : "（美肤降级：" + beautySkippedReason + "）", cost);
+
+            // ---- 5/6 换底合成：仅成品图模式（端上直接拿成品），透明底出口跳过 ----
+            String payload;
+            if (wantFinished) {
+                long t5 = System.currentTimeMillis();
+                payload = compositeService.composite(png, bgHex, outTop, input);
+                log.info("{} | bg={} outTop={} | 结果=ok | 耗时={}ms", FlowLog.tag(FlowLog.COMPOSE),
+                        bgHex, outTop, System.currentTimeMillis() - t5);
+            } else {
+                payload = png;
+                log.info("{} | 结果=跳过（透明底输出，端上自行换底）", FlowLog.tag(FlowLog.COMPOSE));
+            }
+
+            // ---- 6/6 输出 ----
+            // 原背景色：只有「兼容模式」（返回透明底、端上自己换底）才需要。
+            // 成品图模式下后端已铺好底色，端上不再做去色边，算它也是白算。
+            // 统计对象必须是透明底 PNG，不是成品图。
+            String bgTag = "不适用（端上不需要）";
+            if (!wantFinished) {
+                BackgroundColorEstimator.Result bg = BackgroundColorEstimator.estimateDetailed(png);
+                if (bg != null) {
+                    int[] rgb = bg.toRgb();
+                    out.put("origBg", rgb);
+                    bgTag = rgb[0] + "," + rgb[1] + "," + rgb[2];
+                } else {
+                    bgTag = "样本不足（端上兜底）";
+                }
+            }
+            log.info("{} | user={} | 结果=ok finished={} origBg={} | 响应体={}KB(base64) | 处理={}ms 总={}ms",
+                    FlowLog.tag(FlowLog.OUTPUT), userTag(user), wantFinished, bgTag,
+                    Math.round(payload.length() / 1024.0), cost, System.currentTimeMillis() - flowStart);
+
             out.put("ok", true);
             out.put("image", payload);
             if (wantFinished) out.put("finished", true);
             // 内容安全检测已通过（端上「处理明细」会展示这一环）
             if (secChecked) out.put("secChecked", true);
 
-            // 原背景色：只有「兼容模式」（返回透明底、端上自己换底）才需要。
-            // 成品图模式下后端已铺好底色，端上不再做去色边，算它也是白算。
-            // 统计对象必须是透明底 PNG，不是成品图。
-            if (!wantFinished) {
-                BackgroundColorEstimator.Result bg = BackgroundColorEstimator.estimateDetailed(png);
-                if (bg != null) {
-                    out.put("origBg", bg.toRgb());
-                    log.info("segment origBg {}（覆盖率是透明像素占比，非图片内容）", bg);
-                } else {
-                    log.info("segment origBg 样本不足，交由端上兜底");
-                }
-            }
-
             out.put("beautyApplied", beautyApplied);
             if (beautySkippedReason != null) out.put("beautySkippedReason", beautySkippedReason);
             out.put("costMs", cost);
             return out;
         } catch (Exception e) {
-            return fail(out, e);
+            return fail(out, e, FlowLog.PORTRAIT);
         }
     }
 
-    /** 统一的失败响应：按异常类型映射错误码，只记消息不记图片 */
-    private Map<String, Object> fail(Map<String, Object> out, Exception e) {
+    /** 统一的失败响应：按异常类型映射错误码，只记消息不记图片。step 用于带出失败的流程阶段序号 */
+    private Map<String, Object> fail(Map<String, Object> out, Exception e, int step) {
         out.put("ok", false);
         if (e instanceof IllegalArgumentException) {
+            log.warn("{} | 结果=失败（坏图）{}", FlowLog.tag(step), Logs.safe(e.getMessage()));
             out.put("code", "BAD_IMAGE");
             out.put("msg", e.getMessage());
         } else if (e instanceof IllegalStateException) {
+            log.warn("{} | 结果=失败 {}", FlowLog.tag(step), Logs.safe(e.getMessage()));
             out.put("code", "BDA_FAIL");
             out.put("msg", e.getMessage());
         } else {
-            log.error("segment 异常: {}", e.toString());
+            log.error("{} | 结果=异常: {}", FlowLog.tag(step), Logs.safe(e.toString()));
             out.put("code", "BDA_FAIL");
             out.put("msg", "服务暂时不可用，请稍后重试");
         }
