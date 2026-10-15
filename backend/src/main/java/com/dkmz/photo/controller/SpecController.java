@@ -104,7 +104,12 @@ public class SpecController {
 
     @GetMapping("/specs/version")
     public Map<String, Object> version() {
-        return specService.version();
+        Map<String, Object> out = new LinkedHashMap<>(specService.version());
+        // 模型地址纳入「要不要重新拉全量」的判断：管理员改 XPHOTO_MODEL_URL 后重启，
+        // 端上即使规格库版本没变，下次刷新也会发现 modelUrl 变了而重新拉取，
+        // 避免端上缓存里残留旧地址（2026-10-15 线上排查发现的坑）。
+        out.put("modelUrl", modelUrl == null ? "" : modelUrl.trim());
+        return out;
     }
 
     @GetMapping("/specs/{id}")

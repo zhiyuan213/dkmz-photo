@@ -336,9 +336,11 @@ function applyCloud(doc) {
       BG_ORDER = order;
     }
   }
-  // 模型下载信息（后端下发）：有 url 才覆盖；没有则保留现值（缓存里为空也正常）
-  if (doc.model && typeof doc.model === 'object' && doc.model.url) {
-    MODEL.url = String(doc.model.url).trim();
+  // 模型下载信息：**云端是唯一事实来源**。明确给了 model 对象就整体采用——
+  // url 为空 = 服务端未配置（或刚删掉环境变量），要清掉端上残留的旧地址；
+  // 不能「只在有新值时覆盖」，否则删掉变量后端上还会拿着旧地址继续撞墙。
+  if (doc.model && typeof doc.model === 'object') {
+    MODEL.url = doc.model.url ? String(doc.model.url).trim() : '';
     if (doc.model.fileName) MODEL.fileName = String(doc.model.fileName).trim();
   }
 
@@ -403,7 +405,12 @@ function refresh() {
         }
       })();
       const stale = !cached || Date.now() - (cached.at || 0) > CACHE_TTL;
-      if (v.version && v.version === META.version && !stale) {
+      // 模型地址变了也要全量拉：XPHOTO_MODEL_URL 是服务端随时可改的配置，
+      // 不能被「规格版本号没变」的快速路径挡住，否则端上会一直用缓存里的旧地址
+      const cachedModelUrl =
+        (cached && cached.doc && cached.doc.model && cached.doc.model.url) || '';
+      const modelChanged = typeof v.modelUrl === 'string' && v.modelUrl !== cachedModelUrl;
+      if (v.version && v.version === META.version && !stale && !modelChanged) {
         console.log('[photo][specs] 云端版本一致，跳过拉取', v.version);
         return { ok: true, updated: false, version: v.version };
       }
