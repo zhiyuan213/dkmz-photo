@@ -10,6 +10,8 @@
  *   ⇒ 等价于 x / 127.5 - 1
  */
 
+const specs = require('./specs.js');
+
 // ⚠️ 换模型必须核对：用 Netron 打开 onnx，看 Graph 的 input / output 节点名
 let IO = { input: 'input', output: 'output' };
 
@@ -23,8 +25,21 @@ function getIONames() {
 }
 
 const SIZE_DIVISIBILITY = 32;
-const DEFAULT_MODEL_FILE = 'modnet-fp16.onnx';
+const DEFAULT_MODEL_FILE = 'modnet-fp32.onnx';
+// 仅当调用方既没传 url 也没配置任何来源时的最后兜底（生产用不到，正式版小程序
+// 无法访问未备案域名，这里只是保留一个语义上的默认值，便于单测/工具脚本调用）。
 const DEFAULT_MODEL_URL = 'https://huggingface.co/Xenova/modnet/resolve/main/onnx/model_fp16.onnx';
+
+/**
+ * 【仅本地联调】开发机上跑的模型静态服务（scripts/serve-models.mjs，端口 5178），
+ * 填完整地址，例如 'http://192.168.21.11:5178/model.onnx'。
+ *   · 真机调试：填电脑的局域网 IP，手机与电脑连同一 Wi-Fi
+ *   · 生产环境：**留空**，走服务端下发（后端环境变量 XPHOTO_MODEL_URL）
+ *
+ * ⚠️ 千万不要把开发机地址写进 MODEL_VARIANTS.url —— 那正是 2026-10-15 线上事故的原因：
+ * 发版后真机访问不到 192.168.x.x，报 ERR_CONNECTION_REFUSED、模型准备失败。
+ */
+const DEV_MODEL_URL = '';
 
 /**
  * 可选模型档位（2026-10 用 scripts/inspect-model.py 实测结论）
@@ -38,18 +53,18 @@ const DEFAULT_MODEL_URL = 'https://huggingface.co/Xenova/modnet/resolve/main/onn
  */
 const MODEL_VARIANTS = [
   {
-    key: 'fp16',
-    label: 'fp16 · 13MB（⚠️ vivo 实测转换失败，仅对照）',
-    fileName: 'modnet-fp16.onnx',
-    url: 'http://192.168.21.11:5178/model_fp16.onnx',
+    key: 'fp32',
+    label: 'fp32 · 25MB（真机已验证档 · 默认使用）',
+    fileName: 'modnet-fp32.onnx',
+    // 下载地址**不写死**：由服务端 /api/photo/specs 下发，见 resolveModelSource()
+    url: '',
     opsOk: true,
   },
   {
-    key: 'fp32',
-    label: 'fp32 · 25MB（真机已验证档）',
-    fileName: 'modnet-fp32.onnx',
-    // 开发期走本地局域网服务器；上线前换 HTTPS CDN 地址
-    url: 'http://192.168.21.11:5178/model.onnx',
+    key: 'fp16',
+    label: 'fp16 · 13MB（⚠️ vivo 实测转换失败，仅对照）',
+    fileName: 'modnet-fp16.onnx',
+    url: '',
     opsOk: true,
   },
   {
@@ -58,16 +73,6 @@ const MODEL_VARIANTS = [
     fileName: 'modnet-int8.onnx',
     url: 'https://huggingface.co/Xenova/modnet/resolve/main/onnx/model_quantized.onnx',
     opsOk: false,
-  },
-  {
-    key: 'local',
-    label: '本地开发服务器 · 局域网（真机用）',
-    fileName: 'modnet-local.onnx',
-    // ⚠️ createInferenceSession 在开发者工具模拟器不支持，必须真机跑；
-    // 真机访问不到 127.0.0.1，要用电脑的局域网 IP（手机与电脑连同一 Wi-Fi）。
-    // IP 变了就改这里；serve-models.mjs 绑定 0.0.0.0，重启后自动生效。
-    url: 'http://192.168.21.11:5178/model_fp16.onnx',
-    opsOk: true,
   },
 ];
 
@@ -201,13 +206,46 @@ function sharedTypicalShape() {
  * 获取全局共享推理会话
  * @returns {Promise<{session, cached:boolean, loadMs:number}>}
  */
+/**
+ * 解析「这次该从哪个地址下载模型」。
+ *
+ * 优先级：① 服务端下发（specs.modelInfo().url）→ ② 本地联调常量 DEV_MODEL_URL。
+ * 两者都没有就抛 NO_MODEL_URL（带 code，调用方可据此提示/重试），
+ * **绝不静默退回开发机地址** —— 那正是 2026-10-15 线上事故的根因。
+ *
+ * 注意每次都重新解析：规格库是异步拉取的，首次进页面时可能还没拿到；
+ * 服务端地址到达后重试即可成功（见 pages/make/make.js 的 prepareModel 重试）。
+ */
+function resolveModelSource(variant) {
+  const v = variant || MODEL_VARIANTS[0];
+  let info = null;
+  try {
+    info = specs.modelInfo ? specs.modelInfo() : null;
+  } catch (e) {
+    info = null;
+  }
+  if (info && info.url) {
+    return { fileName: info.fileName || v.fileName, url: info.url, from: 'cloud' };
+  }
+  if (DEV_MODEL_URL) {
+    return { fileName: v.fileName, url: DEV_MODEL_URL, from: 'dev' };
+  }
+  const err = new Error('模型下载地址未配置：服务端未下发（请检查后端环境变量 XPHOTO_MODEL_URL）');
+  err.code = 'NO_MODEL_URL';
+  throw err;
+}
+
 function getSharedSession() {
   if (sharedSession) {
     return Promise.resolve({ session: sharedSession, cached: true, loadMs: 0 });
   }
   if (sharedSessionPromise) return sharedSessionPromise;
   const variant = MODEL_VARIANTS.find((v) => v.key === SHARED_VARIANT_KEY) || MODEL_VARIANTS[0];
-  const p = ensureModel({ fileName: variant.fileName, url: variant.url })
+  // 包一层 Promise.resolve().then：解析失败（NO_MODEL_URL）也走 rejected，
+  // 而不是同步抛出，调用方统一用 .catch 处理
+  const p = Promise.resolve()
+    .then(() => resolveModelSource(variant))
+    .then((src) => ensureModel({ fileName: src.fileName, url: src.url }))
     .then((r) => createSession(r.path, { precisionLevel: 2, typicalShape: sharedTypicalShape() }))
     .then(({ session, loadMs }) => {
       sharedSession = session;
@@ -492,6 +530,7 @@ module.exports = {
   getIONames,
   modelPath,
   modelExists,
+  resolveModelSource,
   ensureModel,
   clearModel,
   fileSize,

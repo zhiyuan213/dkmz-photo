@@ -125,6 +125,16 @@ Page({
       .catch((err) => {
         const msg = err && (err.message || err.errMsg || JSON.stringify(err));
         this.setData({ modelError: msg, modelStateText: '模型准备失败' });
+        // 模型地址由服务端下发，而规格库是异步拉的：首次进页面可能还没拿到地址。
+        // 这里补拉一次规格库再重试；只重试一次，避免网络异常时来回死循环。
+        if (err && err.code === 'NO_MODEL_URL' && !this._modelRetried) {
+          this._modelRetried = true;
+          this.setData({ modelStateText: '获取模型地址…' });
+          specs
+            .refresh()
+            .then(() => this.prepareModel())
+            .catch(() => {});
+        }
       });
   },
 
@@ -174,6 +184,7 @@ Page({
   onPickPhoto() {
     if (this.data.busy) return;
     if (this.data.modelError) {
+      this._modelRetried = false; // 手动重试时允许再补拉一次规格库
       this.prepareModel();
       return;
     }

@@ -47,6 +47,13 @@ public class SpecController {
     @Value("${photo.job-token:change-me}")
     private String jobToken;
 
+    /** 端上抠图模型：随 /api/photo/specs 下发，端上优先用这里的下载地址 */
+    @Value("${photo.model.file-name:modnet-fp32.onnx}")
+    private String modelFileName;
+
+    @Value("${photo.model.url:}")
+    private String modelUrl;
+
     public SpecController(SpecService specService) {
         this.specService = specService;
     }
@@ -74,7 +81,25 @@ public class SpecController {
         out.put("verifiedFrom", doc.getVerifiedFrom());
         out.put("backgrounds", doc.getBackgrounds());
         out.put("sizes", doc.getSizes());
+        out.put("model", modelInfo());
         return out;
+    }
+
+    /**
+     * 端上抠图模型的下载信息（随规格库一起下发）。
+     *
+     * 为什么要后端下发：模型 25MB 打不进小程序包（上限 2MB），只能运行时下载；
+     * 而正式版小程序的 wx.downloadFile 又要求域名已完成 ICP 备案并配进
+     * 「downloadFile 合法域名」。把地址放在这里，换 CDN / 换模型只需改环境变量
+     * XPHOTO_MODEL_URL 并重启服务，**不用重新发布小程序**。
+     *
+     * url 为空 = 未配置：端上退回内置兜底地址（仅供本地联调，生产必须配）。
+     */
+    private Map<String, Object> modelInfo() {
+        Map<String, Object> model = new LinkedHashMap<>();
+        model.put("fileName", modelFileName);
+        model.put("url", modelUrl == null ? "" : modelUrl.trim());
+        return model;
     }
 
     @GetMapping("/specs/version")

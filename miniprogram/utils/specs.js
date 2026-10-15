@@ -46,6 +46,19 @@ const META = {
  * ⚠️ 恢复红底时必须同步移除后端 SpecService.RETIRED_IDS 里的 "red"，
  *    否则服务每次启动都会把红底从库里删掉，云端下发回来又变成 3 色。
  */
+/**
+ * 端上抠图模型信息（**由后端 /api/photo/specs 下发**，见 applyCloud）。
+ *
+ * 为什么要下发而不是写死在端上：模型 25MB 打不进小程序包（上限 2MB），只能运行时下载；
+ * 下载地址一旦写死，换 CDN / 换模型就得重新发版审核（那正是 2026-10-15 线上事故的原因：
+ * 地址写成了开发机局域网 IP http://192.168.21.11:5178，真机必然 ERR_CONNECTION_REFUSED）。
+ * 改由后端下发后，服务端改环境变量 XPHOTO_MODEL_URL + 重启即可，端上不用动。
+ */
+const MODEL = {
+  fileName: 'modnet-fp32.onnx',
+  url: '', // 空 = 服务端未下发；本地联调用 utils/matting.js 的 DEV_MODEL_BASE
+};
+
 const BUILTIN_BACKGROUNDS = {
   white: { id: 'white', name: '白底', hex: '#FFFFFF' },
   blue: { id: 'blue', name: '蓝底', hex: '#438EDB' },
@@ -323,6 +336,12 @@ function applyCloud(doc) {
       BG_ORDER = order;
     }
   }
+  // 模型下载信息（后端下发）：有 url 才覆盖；没有则保留现值（缓存里为空也正常）
+  if (doc.model && typeof doc.model === 'object' && doc.model.url) {
+    MODEL.url = String(doc.model.url).trim();
+    if (doc.model.fileName) MODEL.fileName = String(doc.model.fileName).trim();
+  }
+
   if (doc.version) META.version = doc.version;
   if (doc.updatedAt) META.updatedAt = doc.updatedAt;
   if (doc.disclaimer) META.disclaimer = doc.disclaimer;
@@ -415,8 +434,17 @@ function sourceInfo() {
   };
 }
 
+/**
+ * 端上模型信息（供 utils/matting.js 取下载地址）。
+ * url 可能为空 —— 调用方必须自己兜底，不要假设它一定有值。
+ */
+function modelInfo() {
+  return { fileName: MODEL.fileName, url: MODEL.url };
+}
+
 module.exports = {
   META,
+  MODEL,
   BACKGROUNDS,
   SIZES,
   allBackgrounds,
@@ -428,4 +456,5 @@ module.exports = {
   refresh,
   loadCache,
   sourceInfo,
+  modelInfo,
 };

@@ -24,6 +24,34 @@
 > 用户不再先选场景，而是直接选**底色 + 尺寸**；原来挂在考试上的规格知识以
 > `size.usedBy` 场景标注的形式保留，体积上限则取原场景里**最严**的那个。
 
+#### 模型下载地址（响应里的 `model` 字段）
+
+端上人像抠图模型（MODNet / ONNX，25MB）**打不进小程序包**（单包上限 2MB），
+只能运行时用 `wx.downloadFile` 下载，所以它的下载地址必须是一个
+**公网可访问、已 ICP 备案的 https 地址**。
+
+这个地址**不写死在端上**，而是随本接口下发（`model.url`），原因是：
+正式版小程序要求下载域名已备案并配进「downloadFile 合法域名」，
+地址一旦写死，换 CDN / 换模型就得重新发版审核。
+
+服务端配置（云托管环境变量）：
+
+| 变量 | 说明 |
+|---|---|
+| `XPHOTO_MODEL_URL` | 模型下载的**绝对 https 地址**，如 `https://<云托管公网域名>/models/modnet-fp32.onnx`。为空则不下发，端上退回内置兜底（仅本地联调，**生产必须配**） |
+| `XPHOTO_MODEL_FILE` | 模型文件名，默认 `modnet-fp32.onnx`；容器内对应 `classpath:/static/models/<file-name>` |
+
+模型文件已随镜像部署在 `backend/src/main/resources/static/models/modnet-fp32.onnx`，
+公网访问路径即 `/models/modnet-fp32.onnx`（Spring Boot 默认静态资源映射，无需额外路由）。
+
+> ⚠️ **踩过的坑（2026-10-15 线上事故）**：模型地址最初写死在端上，
+> 且指向开发机局域网 IP `http://192.168.21.11:5178`，发布后真机一律
+> `ERR_CONNECTION_REFUSED` → 制作页「模型准备失败」。现已改为服务端下发，
+> 端上代码里**不允许**再出现任何写死的下载地址（本地联调走 `matting.js` 的 `DEV_MODEL_URL`）。
+
+> 💡 换 CDN / 换模型：改 `XPHOTO_MODEL_URL` + 重启服务即可，**不用重新发布小程序**。
+> 若换的是文件名或权重，记得同时把文件放进 `static/models/` 并改 `XPHOTO_MODEL_FILE`。
+
 ```json
 {
   "ok": true,
@@ -32,6 +60,7 @@
   "product": "登科喵证件照",
   "disclaimer": "各省、各报考点…请以当次官方公告为准。",
   "verifiedFrom": ["研招网 2026 年…网上确认公告"],
+  "model": { "fileName": "modnet-fp32.onnx", "url": "https://<云托管公网域名>/models/modnet-fp32.onnx" },
   "backgrounds": [{ "id": "white", "name": "白底", "rgb": [255, 255, 255] }],
   "sizes": [
     {

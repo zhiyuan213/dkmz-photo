@@ -81,10 +81,17 @@ dkmz-photo/
 1. 云托管控制台为本小程序新建环境 → 新建服务 `dkmz-backend`，部署方式选「Git 仓库」指向本仓库 `Dockerfile`
 2. 建 MySQL（建议独立库 `dkmz_photo`；表名已加 `photo_` 前缀，与 exam 库同实例也不冲突）
 3. 配环境变量：`WX_APPID`、`WX_SECRET`、`SPRING_DATASOURCE_*`、`PHOTO_JOB_TOKEN`（随机串）
-4. 部署后自测：`GET /api/photo/specs` 应返回 `ok:true`，`backgrounds` 4 条、`sizes` 10 条（种子自动导入；`schemaVersion` 变化时会全量重导）
-5. 虚拟支付开通后补：`XPHOTO_ENABLED=true`、`XPHOTO_OFFER_ID`、`XPHOTO_APP_KEY`、`XPHOTO_PUSH_TOKEN`、`XPHOTO_GOODS`（商品默认 `photo5:390:5` / `photo10:690:10`，即 ¥3.90 送 5 张、¥6.90 送 10 张）
-6. 云托管「消息推送」绑定到本服务的 `POST /api/photo/pay/notify`；再加定时任务调 `POST /api/photo/pay/recheck?token=<PHOTO_JOB_TOKEN>`（建议每 10 分钟）
-7. 把环境 ID 填进 `miniprogram/utils/api.js` 的 `ENV_ID`
+4. **配端上模型下载地址（不配这一步，线上制作会直接报「模型准备失败」）**：
+   模型 25MB 打不进小程序包，只能运行时下载。文件已随镜像部署在
+   `backend/src/main/resources/static/models/modnet-fp32.onnx`，公网路径即 `/models/modnet-fp32.onnx`。
+   ① 云托管控制台开启**公网访问**，拿到默认域名；
+   ② 配环境变量 `XPHOTO_MODEL_URL=https://<该域名>/models/modnet-fp32.onnx`；
+   ③ 把该域名加进 mp 后台「开发设置 → 服务器域名 → **downloadFile 合法域名**」（必须 https + 已 ICP 备案）。
+   端上地址由 `/api/photo/specs` 下发，**以后换 CDN / 换模型只改这个变量 + 重启，不用重发小程序**。
+5. 部署后自测：`GET /api/photo/specs` 应返回 `ok:true`，`backgrounds` 4 条、`sizes` 10 条、**`model.url` 非空**（种子自动导入；`schemaVersion` 变化时会全量重导）
+6. 虚拟支付开通后补：`XPHOTO_ENABLED=true`、`XPHOTO_OFFER_ID`、`XPHOTO_APP_KEY`、`XPHOTO_PUSH_TOKEN`、`XPHOTO_GOODS`（商品默认 `photo5:390:5` / `photo10:690:10`，即 ¥3.90 送 5 张、¥6.90 送 10 张）
+7. 云托管「消息推送」绑定到本服务的 `POST /api/photo/pay/notify`；再加定时任务调 `POST /api/photo/pay/recheck?token=<PHOTO_JOB_TOKEN>`（建议每 10 分钟）
+8. 把环境 ID 填进 `miniprogram/utils/api.js` 的 `ENV_ID`
 
 > 接口细节见 `docs/API.md`。
 

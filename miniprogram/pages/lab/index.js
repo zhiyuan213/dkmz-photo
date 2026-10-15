@@ -141,10 +141,21 @@ Page({
     const v = this.currentVariant();
     this.setData({ busy: true, modelStateText: '下载中… 0%' });
 
+    // 下载地址不写死在端上：由服务端 /api/photo/specs 下发（本地联调走 DEV_MODEL_URL）
+    let src;
+    try {
+      src = matting.resolveModelSource(v);
+    } catch (err) {
+      this.setData({ busy: false, modelStateText: '地址未配置' });
+      this.log(`❌ ${err.message}`);
+      this.toast('模型地址未配置，检查后端 XPHOTO_MODEL_URL');
+      return;
+    }
+
     matting
       .ensureModel({
-        fileName: v.fileName,
-        url: v.url,
+        fileName: src.fileName,
+        url: src.url,
         onProgress: (p) => this.setData({ modelStateText: `下载中… ${p.progress}%` }),
       })
       .then((r) => {
