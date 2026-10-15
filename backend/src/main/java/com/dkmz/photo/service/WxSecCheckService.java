@@ -146,7 +146,9 @@ public class WxSecCheckService {
         volatile String suggest;
         volatile String label = "";
         volatile int errcode = -1;
+        volatile String errmsg = "";
         volatile String raw = "";
+        volatile boolean failed;   // 微信侧检测失败（errcode != 0），不是"还没回来"
         final long expireAt;
 
         Pending(long expireAt) {
@@ -154,7 +156,22 @@ public class WxSecCheckService {
         }
 
         boolean resolved() {
-            return suggest != null && !suggest.isEmpty();
+            return failed || (suggest != null && !suggest.isEmpty());
+        }
+    }
+
+    /** 一次检测的判定结果 */
+    static class Verdict {
+        final String suggest;   // pass / risky / review
+        final boolean failed;   // 微信侧检测失败
+        final int errcode;
+        final String detail;
+
+        Verdict(String suggest, boolean failed, int errcode, String detail) {
+            this.suggest = suggest;
+            this.failed = failed;
+            this.errcode = errcode;
+            this.detail = detail;
         }
     }
 
@@ -170,17 +187,21 @@ public class WxSecCheckService {
             return;
         }
         Submit submit = submit(image, openid);
-        String suggest = await(submit.traceId, waitMs);
-        if (suggest == null) {
+        Verdict v = awaitVerdict(submit.traceId, waitMs);
+        if (v == null) {
             throw new IllegalStateException(
-                    "内容安全检测未在规定时间内返回结果（" + (waitMs / 1000) + "s）：微信结果推送未到达，"
+                    "内容安全检测未在规定时间内返回结果（" + (waitMs / 1000) + "s）：未收到微信结果推送，"
                             + "请检查 mp 后台「消息推送」配置");
         }
-        if ("pass".equalsIgnoreCase(suggest)) {
+        if (v.failed) {
+            // 微信侧检测失败（拉不到图 / 内部错误）：不是"没结果"，要如实报出来
+            throw new IllegalStateException("微信侧检测失败 errcode=" + v.errcode + " " + v.detail);
+        }
+        if ("pass".equalsIgnoreCase(v.suggest)) {
             return;
         }
         // risky（明确违规）与 review（疑似违规）都按拦截处理
-        throw new RiskyContentException(suggest);
+        throw new RiskyContentException(v.suggest);
     }
 
     /** 提交异步检测，返回 trace_id（失败抛 IllegalStateException） */
@@ -227,25 +248,39 @@ public class WxSecCheckService {
         return new Submit(traceId, mediaUrl);
     }
 
-    /** 轮询等待结果；超时返回 null */
-    String await(String traceId, long timeoutMs) {
+    /**
+     * 轮询等待结果。
+     * @return 三态：正常判定 / 微信侧失败（{@code v.failed}）/ 超时未回（null）
+     */
+    Verdict awaitVerdict(String traceId, long timeoutMs) {
         Pending p = pendings.get(traceId);
         if (p == null) {
             return null;
         }
         long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
+        while (true) {
             if (p.resolved()) {
-                return p.suggest;
+                return verdictOf(p);
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                // 超时按"没收到结果"处理（fail-closed），与"微信明确报错"区分开
+                return p.resolved() ? verdictOf(p) : null;
             }
             try {
                 Thread.sleep(POLL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return null;
+                return p.resolved() ? verdictOf(p) : null;
             }
         }
-        return p.resolved() ? p.suggest : null;
+    }
+
+    private static Verdict verdictOf(Pending p) {
+        if (p.failed) {
+            String detail = p.errmsg.isEmpty() ? p.raw : p.errmsg;
+            return new Verdict(null, true, p.errcode, detail);
+        }
+        return new Verdict(p.suggest, false, p.errcode, p.label);
     }
 
     /**
@@ -255,33 +290,67 @@ public class WxSecCheckService {
     public boolean acceptPush(JsonNode node) {
         String traceId = node.path("trace_id").asText("");
         if (traceId.isEmpty()) {
-            log.warn("内容安全检测推送缺 trace_id，忽略");
+            log.warn("内容安全检测推送缺 trace_id，忽略：{}", node);
             return false;
         }
+        int errcode = node.path("errcode").asInt(0);
+        String errmsg = node.path("errmsg").asText("");
+
+        // suggest/label：顶层拿不到就去 detail 里找。
+        // ⚠️ 微信 XML 推送里 suggest 是在 <detail> 内的：
+        //   <detail><strategy/><errcode/><suggest/><label/><prob/></detail>
+        // PushSignUtil 会把 detail 转成**嵌套对象**（不是字符串），因此必须按对象解析，
+        // 用 asText() 取会得到空串、导致每次检测都白等到超时。
         String suggest = node.path("suggest").asText("");
         String label = node.path("label").asText("");
-        // suggest/label 有时嵌在 detail（JSON 字符串）里，两种都要能取到
-        if (suggest.isEmpty()) {
-            String detail = node.path("detail").asText("");
-            if (!detail.isEmpty()) {
-                try {
-                    JsonNode d = om.readTree(detail);
-                    suggest = d.path("suggest").asText("");
-                    if (label.isEmpty()) label = d.path("label").asText("");
-                } catch (Exception ignore) {
-                    // detail 不是 JSON 就放弃解析
-                }
+        int detailErrcode = 0;
+        JsonNode detail = node.path("detail");
+        if (detail.isTextual() && !detail.asText().isEmpty()) {
+            try {
+                detail = om.readTree(detail.asText());
+            } catch (Exception ignore) {
+                detail = null;   // detail 不是 JSON 就放弃解析
             }
         }
+        if (detail != null) {
+            JsonNode first = detail.isArray() ? (detail.size() > 0 ? detail.get(0) : null) : detail;
+            if (first != null && first.isObject()) {
+                if (suggest.isEmpty()) suggest = first.path("suggest").asText("");
+                if (label.isEmpty()) label = first.path("label").asText("");
+                detailErrcode = first.path("errcode").asInt(0);
+            }
+        }
+
+        // 判定"微信侧检测失败"：顶层 errcode 非 0，或顶层没给结论但 detail 报了策略错误
+        int failCode = errcode;
+        String failMsg = errmsg;
+        if (failCode == 0 && suggest.isEmpty() && detailErrcode != 0) {
+            failCode = detailErrcode;
+            failMsg = "detail.errcode=" + detailErrcode + "（检测策略执行失败，微信未能取到待检图或内部错误）";
+        }
+
         Pending p = pendings.get(traceId);
         if (p == null) {
-            log.info("内容安全检测结果无对应提交（可能已超时清理）trace_id={} suggest={}", traceId, suggest);
+            log.info("内容安全检测结果无对应提交（可能已超时清理）trace_id={} suggest={} errcode={}",
+                    traceId, suggest, errcode);
             return false;
+        }
+        p.errcode = failCode;
+        p.errmsg = failMsg;
+        p.raw = node.toString();
+        if (failCode != 0) {
+            p.failed = true;   // 明确失败：让上层立刻报错，而不是白等满 waitMs
+            log.warn("内容安全检测失败 trace_id={} errcode={} errmsg={} raw={}",
+                    traceId, failCode, failMsg, node);
+            return true;
+        }
+        if (suggest.isEmpty()) {
+            // 匹配到了但还没有结论（异常报文），保持等待，等下一轮或超时
+            log.warn("内容安全检测推送已到达但无 suggest，继续等待 trace_id={} raw={}", traceId, node);
+            return true;
         }
         p.suggest = suggest;
         p.label = label;
-        p.errcode = node.path("errcode").asInt(0);
-        p.raw = node.toString();
         log.info("内容安全检测结果 trace_id={} suggest={} label={}", traceId, suggest, label);
         return true;
     }
@@ -318,16 +387,28 @@ public class WxSecCheckService {
             Submit s = submit(image, null);
             out.put("traceId", s.traceId);
             out.put("mediaUrl", s.mediaUrl);
-            String suggest = await(s.traceId, waitMs);
-            if (suggest == null) {
+            out.put("submitted", true);
+            Verdict v = awaitVerdict(s.traceId, waitMs);
+            if (v == null) {
                 out.put("ok", false);
+                out.put("received", false);
                 out.put("msg", "已提交但未在 " + (waitMs / 1000) + "s 内收到结果 —— 多半是 mp 后台「消息推送」"
                         + "未配置或未指向本服务 /api/photo/pay/notify");
                 return out;
             }
+            // 收到推送就说明「提交 → 公网回拉 → 推送」这条链路是通的
+            out.put("received", true);
+            out.put("errcode", v.errcode);
+            out.put("suggest", v.suggest);
+            if (v.failed) {
+                out.put("ok", false);
+                out.put("msg", "推送链路已通，但微信侧检测失败 errcode=" + v.errcode + " " + v.detail
+                        + " —— 多半是微信拉不到 " + s.mediaUrl
+                        + "（检查 XPHOTO_PUBLIC_BASE_URL 是否为公网可访问地址、云托管公网访问是否开启）");
+                return out;
+            }
             out.put("ok", true);
-            out.put("suggest", suggest);
-            out.put("msg", "通道正常，检测结果 suggest=" + suggest);
+            out.put("msg", "通道正常，检测结果 suggest=" + v.suggest);
             return out;
         } catch (Exception e) {
             out.put("ok", false);

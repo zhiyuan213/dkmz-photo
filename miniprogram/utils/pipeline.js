@@ -8,11 +8,9 @@
  *  - utils/face.js   VisionKit 静态图人脸检测 + calcCropBox 构图
  *  - utils/matting.js MODNet 推理会话（session 由调用方提前建好传入）
  *
- * 抠图通道二选一（运行时自动降级）：
- *  - 端上 MODNet（默认）：离线、免上传
- *  - 云端精修（opts.cloudSegment）：调用方传入 base64→Promise 函数，走腾讯云 BDA
- *    人像分割（+ 可选面部皮肤美白），发丝/复杂背景边缘更准；失败或未开通时自动回退端上，
- *    功能不中断
+ * 抠图通道：**只有云端精修**（opts.cloudSegment）—— 腾讯云 BDA 人像分割（+ 可选面部皮肤美白）。
+ * 端上 MODNet 已不参与出片（降级会让用户拿到不一致的成片，且会绕过内容安全检测），
+ * 任何失败都直接抛出、由页面明确提示；matting.js 的推理仅保留给实验室页自检。
  *
  * 云端返回三种形态（按后端能力/入参自动识别）：
  *  - alpha 灰度图（alphaOnly=true，只替换背景）：云端只回 alpha（10~30KB），
@@ -843,7 +841,8 @@ function outOfSourceTopRows(box, outH) {
  *   - 只替换背景（alphaOnly）：{ ok:true, alpha, width, height }
  *   - 成品图模式：{ ok:true, image, finished:true, beautyApplied? }
  *   - 兼容模式：{ ok:true, image(透明底 PNG), origBg?, beautyApplied? }
- * reject / ok:false 一律视为失败（由上层回退端上抠图）。
+ * reject / ok:false 一律视为失败 —— 上层直接中断并提示（内容安全检测不通过时
+ * 后端会回 code=RISKY_CONTENT，绝不允许回退到端上抠图绕开检测）。
  *
  * @param {object} req { imgPath, box, outW, outH, bgHex, outTop, alphaOnly }
  * @returns {Promise<{finishedPath?:string, mask?:Float32Array, maskWidth?:number,
@@ -907,7 +906,7 @@ function cloudMatting(req, cloudSegment) {
       // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
       return base64ToTempFile(res.image, 'png')
         .then(maskFromPng)
-        .then((m) => Object.assign(m, { beautyApplied }));
+        .then((m) => Object.assign(m, { beautyApplied, secChecked }));
     });
 }
 
@@ -933,12 +932,12 @@ function localMatting(croppedPath, session, shortEdge) {
  *   session       已加载的推理会话（matting.createSession 产物）
  *   shortEdge     推理短边，默认 384
  *   watermark     水印文字；传空串则不加水印（付费高清版）
- *   cloudSegment  可选，云端精修：(上传图 base64, {alphaOnly?, bgHex?, outTop}) =>
- *                 Promise<{ok, alpha?|image?, finished?, beautyApplied?}>；
- *                 失败/未开通自动回退端上 MODNet
+ *   cloudSegment  必填，云端精修：(上传图 base64, {alphaOnly?, bgHex?, outTop}) =>
+ *                 Promise<{ok, alpha?|image?, finished?, beautyApplied?, secChecked?}>；
+ *                 失败一律 reject 上抛（不再回退端上 MODNet）
  *   alphaOnly     可选，true = 只替换背景（不美颜）：云端只回 alpha 灰度图，
  *                 端上用本地裁剪图换底（省流量、不经有损 JPEG）
- *   onStep        (step, info) 进度回调：face / crop / matting / compose / size
+ *   onStep        (step, info) 进度回调：face / crop / seccheck / matting / compose / size
  * @returns {Promise<object>} 结果（path/kb/quality/box/metrics/faceInfo/mattingMode）
  */
 function makeIdPhoto(opts) {
@@ -975,10 +974,10 @@ function makeIdPhoto(opts) {
       const t1 = Date.now();
       const finish = (r, mode) => {
         const ms = Date.now() - t1;
-        // 内容安全检测（微信 imgSecCheck）发生在云端处理之前，按实际顺序排在抠图之前。
-        // 端上本地抠图不上传照片，不存在 UGC 上传，故不展示该行。
+        // 内容安全检测（微信 security.mediaCheckAsync）在云端处理之前完成，
+        // 按实际顺序排在抠图之前。端上本地抠图不上传照片，不存在 UGC 上传，故不展示该行。
         if (mode === 'cloud' && r.secChecked) {
-          metrics.push({ k: '内容安全检测', v: '已通过（微信 imgSecCheck）' });
+          metrics.push({ k: '内容安全检测', v: '已通过（微信内容安全检测）' });
         }
         metrics.push({
           k: mode === 'cloud' ? '云端抠图' : '端上推理',
@@ -1009,7 +1008,7 @@ function makeIdPhoto(opts) {
         };
       };
       // ============================================================
-      // 视频制作只有一条通道：云端精修（含内容安全检测）。
+      // 证件照制作只有一条通道：云端精修（含内容安全检测）。
       // 已取消「云端失败静默回退端上抠图」——降级会让用户拿到不一致的成片，
       // 且会绕过内容安全检测。任何失败都直接抛出，由页面明确提示原因。
       // （端上 MODNet 推理保留在 matting.js 供实验室页自检使用，不再参与出片。）

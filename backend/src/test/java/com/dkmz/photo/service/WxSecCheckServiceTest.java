@@ -1,5 +1,6 @@
 package com.dkmz.photo.service;
 
+import com.dkmz.photo.support.PushSignUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
@@ -37,21 +38,38 @@ class WxSecCheckServiceTest {
                 .when(s).postJson(anyString(), anyString(), anyBoolean());
     }
 
-    /** 模拟微信异步推送结果（延迟一点，走 await 的轮询窗口） */
-    private static void pushAsync(WxSecCheckService s, String traceId, String suggest, long delayMs) {
+    /** 模拟微信异步推送（延迟一点，走 awaitVerdict 的轮询窗口） */
+    private static void pushNodeAsync(WxSecCheckService s, ObjectNode node, long delayMs) {
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(delayMs);
             } catch (InterruptedException ignore) {
                 Thread.currentThread().interrupt();
             }
-            ObjectNode node = new ObjectMapper().createObjectNode();
-            node.put("trace_id", traceId);
-            node.put("suggest", suggest);
             s.acceptPush(node);
         });
         t.setDaemon(true);
         t.start();
+    }
+
+    /** 模拟微信异步推送结果（顶层带 suggest 的简化形态） */
+    private static void pushAsync(WxSecCheckService s, String traceId, String suggest, long delayMs) {
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", traceId);
+        node.put("suggest", suggest);
+        pushNodeAsync(s, node, delayMs);
+    }
+
+    /** 微信真实推送报文（事件 wxa_media_check）——suggest 在 <detail> 里，不是顶层 */
+    private static String xmlPush(String traceId, String suggest) {
+        return "<xml><ToUserName><![CDATA[gh_abc]]></ToUserName>"
+                + "<FromUserName><![CDATA[oUser]]></FromUserName><CreateTime>1596003230</CreateTime>"
+                + "<MsgType><![CDATA[event]]></MsgType><Event><![CDATA[wxa_media_check]]></Event>"
+                + "<appid><![CDATA[wx1234567890]]></appid>"
+                + "<trace_id><![CDATA[" + traceId + "]]></trace_id><version>2</version>"
+                + "<detail><strategy>content_model</strategy><errcode>0</errcode>"
+                + "<suggest>" + suggest + "</suggest><label>100</label><prob>90</prob></detail>"
+                + "<errcode>0</errcode><errmsg><![CDATA[ok]]></errmsg></xml>";
     }
 
     @Test
@@ -165,5 +183,95 @@ class WxSecCheckServiceTest {
         assertEquals(Boolean.TRUE, d.get("ok"));
         assertEquals(TRACE, d.get("traceId"));
         assertEquals("pass", d.get("suggest"));
+    }
+
+    // ---------------------------------------------------- 推送报文解析（真实形态）
+
+    /** 微信真实 XML 推送：suggest 嵌在 <detail> 里，必须经真实解析器也能取到 */
+    @Test
+    void xmlPushFromWeChatIsParsedThroughDetail() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = (ObjectNode) PushSignUtil.xmlToJson(new ObjectMapper(), xmlPush(TRACE, "pass"));
+        pushNodeAsync(s, node, 100);
+        // 解析不到 detail.suggest 的话，这里会等到超时抛 IllegalStateException
+        s.checkOrThrow(IMG, "u1");
+    }
+
+    /** 同一份 XML 判为 risky —— 图片有问题，必须拦截 */
+    @Test
+    void xmlPushRiskyIsBlocked() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = (ObjectNode) PushSignUtil.xmlToJson(new ObjectMapper(), xmlPush(TRACE, "risky"));
+        pushNodeAsync(s, node, 100);
+        WxSecCheckService.RiskyContentException e =
+                assertThrows(WxSecCheckService.RiskyContentException.class, () -> s.checkOrThrow(IMG, "u1"));
+        assertEquals("risky", e.getSuggest());
+    }
+
+    // ---------------------------------------------------- 微信侧检测失败（不是"没结果"）
+
+    /** 微信推送 errcode != 0（拉不到图）必须立刻报错，不能白等满 waitMs */
+    @Test
+    void upstreamCheckFailureFailsFastInsteadOfWaiting() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 5000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("errcode", 40004);
+        node.put("errmsg", "media download fail");
+        long t0 = System.currentTimeMillis();
+        pushNodeAsync(s, node, 100);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> s.checkOrThrow(IMG, "u1"));
+        long cost = System.currentTimeMillis() - t0;
+        assertTrue(e.getMessage().contains("微信侧检测失败"), e.getMessage());
+        assertTrue(e.getMessage().contains("40004"), e.getMessage());
+        assertTrue(cost < 2500, "应立刻失败而不是等满 5s，实际 " + cost + "ms");
+    }
+
+    /** 顶层 errcode=0 但 detail 报了策略错误、又没有 suggest —— 同样按失败处理 */
+    @Test
+    void detailErrcodeWithoutSuggestFails() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("errcode", 0);
+        ObjectNode detail = node.putObject("detail");
+        detail.put("strategy", "content_model");
+        detail.put("errcode", 87014);
+        pushNodeAsync(s, node, 100);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> s.checkOrThrow(IMG, "u1"));
+        assertTrue(e.getMessage().contains("87014"), e.getMessage());
+    }
+
+    /** 报文里既无 suggest 也无错误码（异常推送）保持等待，最终按超时 fail-closed */
+    @Test
+    void pushWithoutVerdictKeepsWaiting() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 600);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        pushNodeAsync(s, node, 50);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> s.checkOrThrow(IMG, "u1"));
+        assertTrue(e.getMessage().contains("消息推送"), e.getMessage());
+    }
+
+    /** 自检：微信侧检测失败要如实报出，不能报成"未收到推送" */
+    @Test
+    void diagnoseReportsUpstreamCheckFailure() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("errcode", 40004);
+        node.put("errmsg", "media download fail");
+        pushNodeAsync(s, node, 100);
+        Map<String, Object> d = s.diagnose(IMG);
+        assertEquals(Boolean.FALSE, d.get("ok"));
+        assertEquals(Boolean.TRUE, d.get("received"));
+        assertEquals(40004, d.get("errcode"));
+        assertTrue(String.valueOf(d.get("msg")).contains("微信侧检测失败"), String.valueOf(d.get("msg")));
     }
 }
