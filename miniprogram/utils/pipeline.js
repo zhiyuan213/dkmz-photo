@@ -1,8 +1,12 @@
 /**
  * 证件照制作流水线（阶段 1 · 免费链路）
  *
- * 选照片 → 人脸检测定位 → 按尺寸规格构图裁剪 → 内容安全检测 → 云端抠图 → 换底合成
- *        → 叠加预览水印 → 按「目标体积」二分法调 JPEG 质量导出
+ * 选照片 → 人脸检测定位 → **本地**构图裁剪 → （完整原图送检）内容安全检测
+ *        → 云端抠图 → 换底合成 → 叠加预览水印 → 按「目标体积」二分法调 JPEG 质量导出
+ *
+ * ⚠️ 顺序说明：端上的「本地构图裁剪」发生在内容安全检测**之前**（只为缩小上传体积，
+ *    全程不出手机、不产出任何结果）；但送给微信检测的是**未裁剪的完整原图**，
+ *    且腾讯云的抠图/提亮严格发生在检测通过**之后**。详见 checkImageBase64 的注释。
  *
  * 依赖：
  *  - utils/face.js   VisionKit 静态图人脸检测 + calcCropBox 构图
@@ -1044,12 +1048,12 @@ function makeIdPhoto(opts) {
       }));
     })
     .then(({ fd, box, croppedPath }) => {
-      step('matting');
       const t1 = Date.now();
       const finish = (r, mode) => {
         const ms = Date.now() - t1;
-        // 内容安全检测（微信 security.mediaCheckAsync）在云端处理之前完成，
-        // 按实际顺序排在抠图之前。端上本地抠图不上传照片，不存在 UGC 上传，故不展示该行。
+        // 内容安全检测（微信 security.mediaCheckAsync）由后端在调腾讯云之前完成，
+        // 因此排在抠图之前。⚠️ 送检的是**未裁剪的完整原图**（checkImageBase64）——
+        // 端上那步构图裁剪只是本地生成本地工作图，不会让裁剪框外的违规内容逃过检测。
         if (mode === 'cloud' && r.secChecked) {
           metrics.push({ k: '内容安全检测', v: '已通过（微信内容安全检测）' });
         }
@@ -1092,7 +1096,12 @@ function makeIdPhoto(opts) {
         err.code = 'CLOUD_UNAVAILABLE';
         return Promise.reject(err);
       }
-      // 内容安全检测排在抠图之前（后端在云端处理前先做检测并等结果）
+      // 真实时序（必须与后端内部顺序、结果页步骤顺序三者一致）：
+      //   ① 上一步：端上本地按证件照规格构图裁剪（仅生成本地工作图，不上传）
+      //   ② 本步：完整原图（未裁剪）与裁剪工作图一并上传本服务
+      //   ③ 服务端**先**用完整原图跑内容安全检测，等微信推送结果
+      //   ④ 只有检测通过，服务端才把裁剪图交给腾讯云 BDA 做抠图/提亮
+      // 所以「内容安全检测」必须排在「抠图」之前 —— 这正是后端内部的执行顺序。
       step('seccheck');
       return cloudMatting(
         {
@@ -1107,7 +1116,10 @@ function makeIdPhoto(opts) {
         },
         o.cloudSegment
       )
-        .then((r) => finish(r, 'cloud'));
+        .then((r) => {
+          step('matting');
+          return finish(r, 'cloud');
+        });
     })
     .then((ctx0) => {
       step('compose');
