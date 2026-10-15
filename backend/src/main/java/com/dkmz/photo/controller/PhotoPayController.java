@@ -284,11 +284,12 @@ public class PhotoPayController {
         // 图片内容安全检测结果推送（security.mediaCheckAsync）
         if ("wxa_media_check".equals(event)) {
             boolean matched = secCheck.acceptPush(node);
-            if (!sigVerified) {
-                // 支付推送还能靠「回查订单」保真，检测推送没有这层兜底；
-                // 未带签名不影响本次判定（trace_id 只存在服务端内存），但要留痕便于排查 Token 不一致
-                log.warn("内容安全检测推送未带有效签名 —— 建议把 mp 后台「消息推送」的 Token 配成与"
-                        + "云托管环境变量 XPHOTO_PUSH_TOKEN 一致的值");
+            // 判定不依赖签名：trace_id 只存在服务端内存、不返回端上，伪造需猜中 96 位随机串。
+            // 云托管转发通道实测**不带 signature / x-wx-sources**，所以「没签名」是常态而非故障，
+            // 只有「带了签名却校验不过」才代表 Token 配错 —— 这才是值得告警的情形。
+            if (sigPresent && !sigVerified) {
+                log.warn("内容安全检测推送携带签名但校验不通过 —— mp 后台「消息推送」的 Token 与"
+                        + "云托管环境变量 XPHOTO_PUSH_TOKEN 不一致");
             }
             log.info("内容安全检测推送 trace_id={} 命中等待中的提交={}",
                     node.path("trace_id").asText(""), matched);
