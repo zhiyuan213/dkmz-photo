@@ -163,12 +163,14 @@ public class WxSecCheckService {
     /** 一次检测的判定结果 */
     static class Verdict {
         final String suggest;   // pass / risky / review
+        final String label;     // 命中标签（100 正常 / 20001 时政 / 20002 色情 / 20006 违法犯罪 / 21000 其他）
         final boolean failed;   // 微信侧检测失败
         final int errcode;
         final String detail;
 
-        Verdict(String suggest, boolean failed, int errcode, String detail) {
+        Verdict(String suggest, String label, boolean failed, int errcode, String detail) {
             this.suggest = suggest;
+            this.label = label;
             this.failed = failed;
             this.errcode = errcode;
             this.detail = detail;
@@ -180,28 +182,90 @@ public class WxSecCheckService {
     /**
      * 检测图片：提交异步检测并等微信推送结果。
      * pass → 正常返回；risky/review → {@link RiskyContentException}；超时/通道异常 → IllegalStateException。
+     *
+     * 每次调用固定输出**一行**汇总日志（接口 + 结果 + 耗时 + 判定），排障时直接 grep
+     * 「内容安全检测 |」即可，不必在提交行/推送行/结果行之间来回对照。
      */
     public void checkOrThrow(byte[] image, String openid) throws RiskyContentException {
         if (!enabled) {
             log.warn("内容安全检测已被开关关闭（SEC_CHECK_ENABLED=false）—— 仅限本地开发");
             return;
         }
-        Submit submit = submit(image, openid);
+        long startedAt = System.currentTimeMillis();
+        Submit submit;
+        try {
+            submit = submit(image, openid);
+        } catch (RuntimeException e) {
+            // 提交阶段就失败（白名单未登记 85107 / 缺 openid / 缺公网基址）也必须留一行汇总，
+            // 否则这条检测在日志里只剩调用方的异常栈，接口与结果对不上号。
+            summary("-", openid, "提交失败：" + brief(e.getMessage(), 200),
+                    System.currentTimeMillis() - startedAt, "拦截 fail-closed");
+            throw e;
+        }
         Verdict v = awaitVerdict(submit.traceId, waitMs);
+        long cost = System.currentTimeMillis() - startedAt;
         if (v == null) {
+            summary(submit.traceId, openid,
+                    "超时未回结果（" + (waitMs / 1000) + "s 内未收到微信推送）", cost, "拦截 fail-closed");
             throw new IllegalStateException(
                     "内容安全检测未在规定时间内返回结果（" + (waitMs / 1000) + "s）：未收到微信结果推送，"
                             + "请检查 mp 后台「消息推送」配置");
         }
         if (v.failed) {
             // 微信侧检测失败（拉不到图 / 内部错误）：不是"没结果"，要如实报出来
+            summary(submit.traceId, openid,
+                    "微信侧失败 errcode=" + v.errcode + " " + brief(v.detail, 200), cost, "拦截 fail-closed");
             throw new IllegalStateException("微信侧检测失败 errcode=" + v.errcode + " " + v.detail);
         }
         if ("pass".equalsIgnoreCase(v.suggest)) {
+            summary(submit.traceId, openid, describe(v), cost, "放行");
             return;
         }
         // risky（明确违规）与 review（疑似违规）都按拦截处理
+        summary(submit.traceId, openid, describe(v), cost, "拦截");
         throw new RiskyContentException(v.suggest);
+    }
+
+    /** 单行汇总：接口 + trace_id + 用户 + 结果 + 耗时 + 判定 */
+    private void summary(String traceId, String openid, String verdict, long costMs, String action) {
+        log.info("内容安全检测 | 接口=POST {} | trace_id={} | user={} | 结果={} | 耗时={}ms | 判定={}",
+                PATH_ASYNC, traceId, userTag(openid), verdict, costMs, action);
+    }
+
+    private static String describe(Verdict v) {
+        if (v.label == null || v.label.isEmpty()) {
+            return "suggest=" + v.suggest + " label=未给";
+        }
+        return "suggest=" + v.suggest + " label=" + v.label + "(" + labelName(v.label) + ")";
+    }
+
+    /** 命中标签 → 中文（取值见官方文档 detail[].label） */
+    private static String labelName(String label) {
+        if (label == null) {
+            return "未知";
+        }
+        switch (label.trim()) {
+            case "100": return "正常";
+            case "20001": return "时政";
+            case "20002": return "色情";
+            case "20006": return "违法犯罪";
+            case "21000": return "其他";
+            default: return "未知";
+        }
+    }
+
+    private static String userTag(String openid) {
+        return openid == null || openid.isEmpty()
+                ? "anonymous" : openid.substring(0, Math.min(8, openid.length())) + "…";
+    }
+
+    /** 压掉换行并截断，避免上游异常报文把日志撑爆 */
+    private static String brief(String s, int max) {
+        if (s == null) {
+            return "";
+        }
+        String t = s.replaceAll("\\s+", " ").trim();
+        return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 
     /** 提交异步检测，返回 trace_id（失败抛 IllegalStateException） */
@@ -249,7 +313,9 @@ public class WxSecCheckService {
             throw new IllegalStateException("提交检测失败 errcode=" + errcode + " body=" + respBody);
         }
         pendings.put(traceId, new Pending(System.currentTimeMillis() + RESULT_TTL_MS));
-        log.info("内容安全检测已提交 trace_id={}（等微信推送结果，最长 {}ms）", traceId, waitMs);
+        // 汇总日志由 checkOrThrow 统一输出（单行含接口/结果/耗时），此处只留调试细节
+        log.debug("内容安全检测已提交 trace_id={} media_url={}（等微信推送，最长 {}ms）",
+                traceId, mediaUrl, waitMs);
         return new Submit(traceId, mediaUrl);
     }
 
@@ -283,9 +349,9 @@ public class WxSecCheckService {
     private static Verdict verdictOf(Pending p) {
         if (p.failed) {
             String detail = p.errmsg.isEmpty() ? p.raw : p.errmsg;
-            return new Verdict(null, true, p.errcode, detail);
+            return new Verdict(null, "", true, p.errcode, detail);
         }
-        return new Verdict(p.suggest, false, p.errcode, p.label);
+        return new Verdict(p.suggest, p.label, false, p.errcode, p.label);
     }
 
     /**
@@ -368,7 +434,8 @@ public class WxSecCheckService {
         }
         p.suggest = suggest;
         p.label = label;
-        log.info("内容安全检测结果 trace_id={} suggest={} label={}", traceId, suggest, label);
+        // 判定结果由 checkOrThrow 的单行汇总输出；这里只在需要时留细节
+        log.debug("内容安全检测结果 trace_id={} suggest={} label={}", traceId, suggest, label);
         return true;
     }
 

@@ -3,11 +3,18 @@ package com.dkmz.photo.service;
 import com.dkmz.photo.support.PushSignUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -346,5 +353,112 @@ class WxSecCheckServiceTest {
         assertEquals(Boolean.TRUE, d.get("received"));
         assertEquals(40004, d.get("errcode"));
         assertTrue(String.valueOf(d.get("msg")).contains("微信侧检测失败"), String.valueOf(d.get("msg")));
+    }
+
+    // ------------------------------------------------------------ 单行汇总日志
+
+    /** 抓取 WxSecCheckService 本次调用期间输出的 INFO 行 */
+    private static List<ILoggingEvent> infoLines(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(WxSecCheckService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.run();
+        } finally {
+            logger.detachAppender(appender);
+        }
+        return appender.list.stream()
+                .filter(e -> e.getLevel() == Level.INFO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 需求（用户）：安全检测要「接口和结果打在同一行」。
+     * 每次检测只输出一行 INFO，且必须同时含接口路径、trace_id、结果与判定。
+     */
+    @Test
+    void emitsExactlyOneSummaryLineWithInterfaceAndResult() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode pass = new ObjectMapper().createObjectNode();
+        pass.put("trace_id", TRACE);
+        pass.put("suggest", "pass");
+        pass.put("label", "100");
+        pushNodeAsync(s, pass, 100);
+
+        List<ILoggingEvent> lines = infoLines(() -> {
+            try {
+                s.checkOrThrow(IMG, "oUser123456");
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertEquals(1, lines.size(), "每次检测只应有一行 INFO："
+                + lines.stream().map(ILoggingEvent::getFormattedMessage).collect(Collectors.toList()));
+        String line = lines.get(0).getFormattedMessage();
+        assertTrue(line.contains("接口=POST /wxa/media_check_async"), line);
+        assertTrue(line.contains("trace_id=" + TRACE), line);
+        assertTrue(line.contains("user=oUser123…"), line);
+        assertTrue(line.contains("suggest=pass"), line);
+        assertTrue(line.contains("label=100(正常)"), line);
+        assertTrue(line.contains("耗时="), line);
+        assertTrue(line.contains("判定=放行"), line);
+    }
+
+    /** 违规图同样只一行，且判定为「拦截」并带上标签中文名 */
+    @Test
+    void summaryLineForRiskyImageSaysBlockedWithLabel() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("suggest", "risky");
+        node.put("label", "20002");
+        pushNodeAsync(s, node, 100);
+
+        List<ILoggingEvent> lines = infoLines(() -> {
+            try {
+                s.checkOrThrow(IMG, "oUser123456");
+                throw new IllegalStateException("违规图必须被拦截");
+            } catch (WxSecCheckService.RiskyContentException expected) {
+                // 预期
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertEquals(1, lines.size(), "违规检测同样只应有一行 INFO");
+        String line = lines.get(0).getFormattedMessage();
+        assertTrue(line.contains("suggest=risky"), line);
+        assertTrue(line.contains("label=20002(色情)"), line);
+        assertTrue(line.contains("判定=拦截"), line);
+    }
+
+    /** 提交阶段就失败（如白名单未登记）也要有一行汇总，不能只剩调用方异常栈 */
+    @Test
+    void summaryLineAlsoEmittedWhenSubmitFails() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        doThrow(new IllegalStateException("HTTP 502 85107 URL不在白名单内"))
+                .when(s).postJson(anyString(), anyString(), anyBoolean());
+
+        List<ILoggingEvent> lines = infoLines(() -> {
+            try {
+                s.checkOrThrow(IMG, "oUser123456");
+                throw new IllegalStateException("提交失败必须上抛");
+            } catch (IllegalStateException expected) {
+                // 预期
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertEquals(1, lines.size(), "提交失败也要留一行汇总");
+        String line = lines.get(0).getFormattedMessage();
+        assertTrue(line.contains("接口=POST /wxa/media_check_async"), line);
+        assertTrue(line.contains("提交失败"), line);
+        assertTrue(line.contains("85107"), line);
+        assertTrue(line.contains("判定=拦截 fail-closed"), line);
     }
 }

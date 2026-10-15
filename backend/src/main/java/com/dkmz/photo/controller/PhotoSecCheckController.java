@@ -86,8 +86,10 @@ public class PhotoSecCheckController {
             out.put("sampleBytes", sample.length);
             Map<String, Object> result = secCheck.diagnose(sample, who);
             out.putAll(result);
-            log.info("sec-check selftest ok={} suggest={} traceId={}",
-                    result.get("ok"), result.get("suggest"), result.get("traceId"));
+            log.info("内容安全检测 | 来源=自检 | 接口=POST /wxa/media_check_async | trace_id={} | "
+                            + "结果=suggest:{} errcode:{} | received={} | ok={} | msg={}",
+                    result.get("traceId"), result.get("suggest"), result.get("errcode"),
+                    result.get("received"), result.get("ok"), result.get("msg"));
         } catch (Exception e) {
             log.error("sec-check selftest 异常: {}", e.toString());
             out.put("ok", false);

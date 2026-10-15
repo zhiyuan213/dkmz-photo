@@ -223,7 +223,6 @@ public class PhotoPayController {
                                          @RequestParam(required = false) String timestamp,
                                          @RequestParam(required = false) String nonce) {
         boolean xml = raw != null && raw.trim().startsWith("<");
-        log.info("收到支付消息推送: {} (x-wx-sources={})", raw, wxSources);
 
         // 云托管转发的微信推送实测既不带 signature 也不带 x-wx-sources：
         // 「无签名」不能判失败（曾因此漏发货），改由 deliver() 查单核验保真。
@@ -241,11 +240,18 @@ public class PhotoPayController {
         try {
             node = xml ? PushSignUtil.xmlToJson(om, raw) : om.readTree(raw);
         } catch (Exception e) {
-            log.error("推送报文解析失败: {}", e.toString());
+            log.error("推送报文解析失败 raw={}: {}", raw, e.toString());
             return reply(xml, false, "parse failed");
         }
 
         String event = node.path("Event").asText("");
+        // 内容安全检测推送每检测一张图就来一条，整包 JSON 记 INFO 太吵
+        //（检测侧另有单行汇总日志，含接口/结果/耗时），此处只留调试细节
+        if ("wxa_media_check".equals(event)) {
+            log.debug("收到内容安全检测推送 x-wx-sources={} raw={}", wxSources, raw);
+        } else {
+            log.info("收到支付消息推送: {} (x-wx-sources={})", raw, wxSources);
+        }
 
         if ("xpay_goods_deliver_notify".equals(event)) {
             boolean ok;
@@ -291,7 +297,7 @@ public class PhotoPayController {
                 log.warn("内容安全检测推送携带签名但校验不通过 —— mp 后台「消息推送」的 Token 与"
                         + "云托管环境变量 XPHOTO_PUSH_TOKEN 不一致");
             }
-            log.info("内容安全检测推送 trace_id={} 命中等待中的提交={}",
+            log.debug("内容安全检测推送 trace_id={} 命中等待中的提交={}",
                     node.path("trace_id").asText(""), matched);
             // 即使没匹配到（超时已清理）也要确认成功，否则微信会重推 15 次
             return reply(xml, true, "success");
