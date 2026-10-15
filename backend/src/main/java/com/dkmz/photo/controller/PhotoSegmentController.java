@@ -88,9 +88,11 @@ public class PhotoSegmentController {
 
         // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 imgSecCheck）----
         // fail-closed：检测通道不可用时拒绝处理，绝不放过风险图。
+        boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
                 secCheck.checkOrThrow(decodeImage(image));
+                secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
                 log.warn("segment 拦截违规图片 user={}", userTag(openid));
                 out.put("ok", false);
@@ -125,6 +127,7 @@ public class PhotoSegmentController {
                 out.put("height", a.height);
                 out.put("beautyApplied", false);
                 out.put("costMs", cost);
+                if (secChecked) out.put("secChecked", true);
                 return out;
             } catch (Exception e) {
                 return fail(out, e);
@@ -145,6 +148,8 @@ public class PhotoSegmentController {
             out.put("ok", true);
             out.put("image", payload);
             if (wantFinished) out.put("finished", true);
+            // 内容安全检测已通过（端上「处理明细」会展示这一环）
+            if (secChecked) out.put("secChecked", true);
 
             // 原背景色：只有「兼容模式」（返回透明底、端上自己换底）才需要。
             // 成品图模式下后端已铺好底色，端上不再做去色边，算它也是白算。

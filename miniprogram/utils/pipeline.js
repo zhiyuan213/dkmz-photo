@@ -886,12 +886,13 @@ function cloudMatting(req, cloudSegment) {
         throw err;
       }
       const beautyApplied = res.beautyApplied === true;
+      const secChecked = res.secChecked === true;   // 内容安全检测已通过（审核整改可查证）
       // 只替换背景：云端只回 alpha 灰度图，端上用本地裁剪图自己换底
       //（走 buildComposite 的去污染 + 头发修复链，观感不降级、像素零损失）
       if (res.alpha) {
         return base64ToTempFile(res.alpha, 'png')
           .then(maskFromGrayPng)
-          .then((m) => Object.assign(m, { beautyApplied: false, alphaOnly: true }));
+          .then((m) => Object.assign(m, { beautyApplied: false, alphaOnly: true, secChecked }));
       }
       if (res.finished) {
         return base64ToTempFile(res.image, 'jpg').then((p) => ({
@@ -900,6 +901,7 @@ function cloudMatting(req, cloudSegment) {
           beautySkippedReason: res.beautySkippedReason,
           processingSize: upload.size,
           uploadQuality: upload.quality,
+          secChecked,
         }));
       }
       // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
@@ -973,6 +975,11 @@ function makeIdPhoto(opts) {
       const t1 = Date.now();
       const finish = (r, mode) => {
         const ms = Date.now() - t1;
+        // 内容安全检测（微信 imgSecCheck）发生在云端处理之前，按实际顺序排在抠图之前。
+        // 端上本地抠图不上传照片，不存在 UGC 上传，故不展示该行。
+        if (mode === 'cloud' && r.secChecked) {
+          metrics.push({ k: '内容安全检测', v: '已通过（微信 imgSecCheck）' });
+        }
         metrics.push({
           k: mode === 'cloud' ? '云端抠图' : '端上推理',
           v: mode === 'cloud' ? `${ms} ms（腾讯云 BDA）` : `${ms} ms（蒙版 ${r.maskWidth}×${r.maskHeight}）`,
