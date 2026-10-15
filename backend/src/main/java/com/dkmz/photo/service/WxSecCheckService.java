@@ -70,10 +70,11 @@ public class WxSecCheckService {
             log.warn("imgSecCheck 已被开关关闭（SEC_CHECK_ENABLED=false）—— 仅限本地开发");
             return;
         }
-        // ① 云托管内网免鉴权通道（网关自动注入 access_token，参数留空占位）
+        // ① 云托管内网免鉴权通道（「开放接口服务」旁加载自动注入 access_token，
+        //    需在云托管控制台「服务管理-云调用」开启开关并登记接口，见 application.yml 注释）
         if (cloudCall) {
             try {
-                judge(post(image, "http://api.weixin.qq.com" + PATH + "?access_token="));
+                judge(post(image, "http://api.weixin.qq.com" + PATH, true));
                 return;
             } catch (RiskyContentException e) {
                 throw e;
@@ -85,7 +86,7 @@ public class WxSecCheckService {
         String token = tokens.get();
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                judge(post(image, "https://api.weixin.qq.com" + PATH + "?access_token=" + token));
+                judge(post(image, "https://api.weixin.qq.com" + PATH + "?access_token=" + token, false));
                 return;
             } catch (RiskyContentException e) {
                 throw e;
@@ -103,15 +104,21 @@ public class WxSecCheckService {
     }
 
     /** 发送图片二进制（Content-Type: application/octet-stream），返回响应文本 */
-    private String post(byte[] image, String url) throws Exception {
+    private String post(byte[] image, String url, boolean cloudChannel) throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(8))
                 .header("Content-Type", "application/octet-stream")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(image))
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        if (cloudChannel && resp.headers().firstValue("x-openapi-seqid").isEmpty()) {
+            // 走通云调用链路时微信会回带这个头；缺失 = 请求没经过「开放接口服务」，
+            // 多半是控制台开关没开 / 接口没登记进微信令牌权限配置
+            log.warn("imgSecCheck 响应缺 x-openapi-seqid —— 未走云托管云调用链路，"
+                    + "请检查控制台「服务管理-云调用-开放接口服务」开关与「微信令牌权限配置」中的 /wxa/img_sec_check");
+        }
         if (resp.statusCode() != 200) {
-            throw new IllegalStateException("imgSecCheck HTTP " + resp.statusCode());
+            throw new IllegalStateException("imgSecCheck HTTP " + resp.statusCode() + " body=" + resp.body());
         }
         return resp.body();
     }

@@ -77,8 +77,14 @@ photo:
   #   用户上传的照片在进入云端处理前先过微信图片安全检测：
   #   · 违规图（errcode 87014）→ 拦截并提示「图片内容涉嫌违规」
   #   · 检测通道不可用 → 一并拒绝（fail-closed，绝不放过风险图）
-  #   通道：云托管内网 http://api.weixin.qq.com 免鉴权（默认），
-  #         降级 https + WX_APPID/WX_SECRET 的 access_token
+  #   通道①：云托管「开放接口服务」云调用（默认）—— 免 access_token，
+  #     ⚠️ 前置配置（缺一不可，都在云托管控制台）：
+  #        a. 服务 dkmz-backend →「服务管理-云调用-开放接口服务」开关打开
+  #        b.「微信令牌权限配置」登记接口 /wxa/img_sec_check
+  #        c. 开启后必须重新构建部署（对已有版本不生效）
+  #   通道②（兜底）：https + WX_APPID/WX_SECRET 换 access_token，
+  #     ⚠️ 需把服务器出口 IP 加进 mp 后台「IP 白名单」，云托管出口 IP
+  #        动态，故此通道仅在配置了固定出口 IP 时才可靠
   #   SEC_CHECK_ENABLED 仅限本地开发置 false 跳过；生产必须为 true（默认）
   # ------------------------------------------------------------
   sec-check:
