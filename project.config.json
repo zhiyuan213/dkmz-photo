@@ -3,7 +3,7 @@
   "appid": "wx3e149506a33d7e64",
   "projectname": "dkmz-photo",
   "compileType": "miniprogram",
-  "libVersion": "3.5.0",
+  "libVersion": "3.17.4",
   "miniprogramRoot": "miniprogram/",
   "setting": {
     "urlCheck": false,
