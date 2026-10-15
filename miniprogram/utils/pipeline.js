@@ -836,7 +836,7 @@ function maskFromGrayPng(pngPath) {
  */
 // 质量档要多留几级：裁剪图上限从 90KB 压到 64KB（要给送检原图腾预算），
 // 最末尺寸档（640 长边）在 0.85 质量下仍可能超限，必须能继续降质量而不是直接失败。
-const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.75, 0.65];
+const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.75, 0.65, 0.55];
 
 // ⚠️ CallContainer 对**文本**请求体有 100KiB 硬上限。官方《微信云托管开发常识》原文：
 //    「CallContainer 请求大小限制 100K，请求中不建议包含图片，可通过对象存储处理。」
@@ -862,8 +862,10 @@ const CLOUD_PAYLOAD_LIMIT = 64 * 1024;
  * 尺寸/质量可以降（控制体积），但**覆盖范围不能降**：宁可用小一号的整幅图，
  * 也绝不能用大一号的裁剪图。
  */
-const CHECK_SIZE_LADDER = [1024, 768, 640];
-const CHECK_QUALITY_LADDER = [0.72, 0.58, 0.45, 0.35];
+// 起始档不设 1024：在 28KB 级预算下它注定超限，白做一次「重编码 + 落临时文件 +
+// 读回 base64」（每次约 100~300ms）。质量档跨度取大，也是为了少试几轮。
+const CHECK_SIZE_LADDER = [768, 640, 512];
+const CHECK_QUALITY_LADDER = [0.72, 0.45, 0.35];
 /**
  * 送检图 base64 上限 —— 它必须与裁剪工作图**合计**留在 CallContainer 的
  * 100KiB 文本限制内，所以这个值不是独立的：cloudMatting 会按「总预算 − 裁剪图」
@@ -924,7 +926,7 @@ function checkImageBase64(imgPath, limit) {
           if (b64.length <= cap) return b64;
           if (qualityIndex + 1 < CHECK_QUALITY_LADDER.length) return attempt(sizeIndex, qualityIndex + 1);
           if (sizeIndex + 1 < CHECK_SIZE_LADDER.length) return attempt(sizeIndex + 1, 0);
-          // 最小档（640 长边 / 质量 0.35）仍超限：返回它并交由上层断言拦下——
+          // 最小档（512 长边 / 质量 0.35）仍超限：返回它并交由上层断言拦下——
           // 绝不能"保体积"到把整张图丢掉，也不能"保体积"到让请求超限失败
           //（超限 = callContainer -600001，后端收不到任何请求）。
           return b64;
