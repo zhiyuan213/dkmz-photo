@@ -950,16 +950,20 @@ function cloudMatting(req, cloudSegment) {
       });
   };
   let upload;
-  // 送检图（完整原图）与裁剪工作图并行准备：串行会白多花一次整图缩放的等待
-  return Promise.all([shoot(0, 0), checkImageBase64(imgPath)])
-    .then(([prepared, checkImage]) => {
+  // 送检图（完整原图）必须**串行**准备：两份图都要解码整张原图，
+  // 同时持有两份解码位图（4032×3024 ≈ 48MB）在低端机上有 OOM 风险，
+  // 串行只多花约 300ms，换稳定性。
+  return shoot(0, 0)
+    .then((prepared) => {
       upload = prepared;
-      const extra = alphaOnly
-        ? { alphaOnly: true }
-        : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
-      // 后端拿它去送微信检测；没有它后端只能退检裁剪图，裁剪框外的违规内容会漏检
-      extra.checkImage = checkImage;
-      return cloudSegment(prepared.b64, extra);
+      return checkImageBase64(imgPath).then((checkImage) => {
+        const extra = alphaOnly
+          ? { alphaOnly: true }
+          : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
+        // 后端拿它去送微信检测；没有它后端只能退检裁剪图，裁剪框外的违规内容会漏检
+        extra.checkImage = checkImage;
+        return cloudSegment(prepared.b64, extra);
+      });
     })
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {
