@@ -196,7 +196,8 @@ function consumeExport(clientNo, specId, specOk) {
  * @param {object} extra {alphaOnly, bgHex, outTop}
  *        alphaOnly：只替换背景（不美颜）时的 alpha-only 出口
  *        bgHex：目标底色 / outTop：裁剪框越出原图的顶部行数
- * 后端未开通 / 调用失败时返回 { ok:false, code, msg }，由调用方回退端上抠图。
+ * 内容安全检测不通过时后端回 { ok:false, code:'RISKY_CONTENT' }（图片违规，需提示用户换图）；
+ * 检测通道异常回 code:'SEC_CHECK_UNAVAILABLE'。两种都**不做本地降级**——出片只有云端一条通道。
  */
 function cloudSegment(imageBase64, beautify = false, extra = null) {
   const alphaOnly = !!(extra && extra.alphaOnly);

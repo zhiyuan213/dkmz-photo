@@ -11,7 +11,7 @@ module.exports = {
 
   CONTACT_EMAIL: '13428961230@163.com',
 
-  // 端上人像分割所依赖的开源模型
+  // 开源人像分割模型（出片链路已不使用端上推理，仅保留代码与许可声明）
   MODEL_NAME: 'MODNet',
   MODEL_LICENSE: 'Apache-2.0',
   MODEL_SOURCE: 'HuggingFace Xenova/modnet（MODNet 官方权重的 ONNX 导出）',

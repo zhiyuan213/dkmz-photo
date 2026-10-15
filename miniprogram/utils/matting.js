@@ -213,8 +213,9 @@ function sharedTypicalShape() {
  * 两者都没有就抛 NO_MODEL_URL（带 code，调用方可据此提示/重试），
  * **绝不静默退回开发机地址** —— 那正是 2026-10-15 线上事故的根因。
  *
- * 注意每次都重新解析：规格库是异步拉取的，首次进页面时可能还没拿到；
- * 服务端地址到达后重试即可成功（见 pages/make/make.js 的 prepareModel 重试）。
+ * 注意每次都重新解析：规格库是异步拉取的，首次进来时可能还没拿到；
+ * 服务端地址到达后重试即可成功（见 pages/lab/index.js 的下载重试）。
+ * ⚠️ 出片链路（pages/make）已不用端上推理，这里是开发者自检页专用。
  */
 function resolveModelSource(variant) {
   const v = variant || MODEL_VARIANTS[0];

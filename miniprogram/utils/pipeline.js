@@ -1,16 +1,17 @@
 /**
  * 证件照制作流水线（阶段 1 · 免费链路）
  *
- * 选照片 → 人脸检测定位 → 按考试规格构图裁剪 → 端上抠图 → 换底合成
+ * 选照片 → 人脸检测定位 → 按尺寸规格构图裁剪 → 内容安全检测 → 云端抠图 → 换底合成
  *        → 叠加预览水印 → 按「目标体积」二分法调 JPEG 质量导出
  *
  * 依赖：
  *  - utils/face.js   VisionKit 静态图人脸检测 + calcCropBox 构图
- *  - utils/matting.js MODNet 推理会话（session 由调用方提前建好传入）
+ *  - utils/matting.js 仅用于端上的图像编解码/蒙版工具（imageSize / resizeMask /
+ *    hexToRgb / fileSizeKB）；其 MODNet 推理已不参与出片。
  *
  * 抠图通道：**只有云端精修**（opts.cloudSegment）—— 腾讯云 BDA 人像分割（+ 可选面部皮肤美白）。
  * 端上 MODNet 已不参与出片（降级会让用户拿到不一致的成片，且会绕过内容安全检测），
- * 任何失败都直接抛出、由页面明确提示；matting.js 的推理仅保留给实验室页自检。
+ * 任何失败都直接抛出、由页面明确提示；推理仅保留在 matting.js 供实验室页自检。
  *
  * 云端返回三种形态（按后端能力/入参自动识别）：
  *  - alpha 灰度图（alphaOnly=true，只替换背景）：云端只回 alpha（10~30KB），
@@ -24,7 +25,8 @@
  *    computeWallMask 必须在 decontaminateEdge 之前算，因为去污染会改写 alpha/RGB、
  *    污染泛洪种子；processHair 用它的结果治深色底上的发丝白霜。
  *
- * 隐私：端上通道原图全程不出手机；云端精修开启时裁剪图会上传至腾讯云做分割。
+ * 隐私：只有云端一条通道，裁剪图会上传至腾讯云做人像分割/提亮后回传；
+ *      处理前的图会经微信内容安全检测（mediaCheckAsync）校验。
  */
 
 const matting = require('./matting');
@@ -910,18 +912,6 @@ function cloudMatting(req, cloudSegment) {
     });
 }
 
-/** 端上 MODNet 抠图（原有链路） */
-function localMatting(croppedPath, session, shortEdge) {
-  return matting
-    .imageToTensor(croppedPath, shortEdge)
-    .then((tensor) => matting.runMatting(session, tensor))
-    .then((r) => ({
-      mask: r.mask,
-      maskWidth: r.maskWidth,
-      maskHeight: r.maskHeight,
-    }));
-}
-
 /**
  * 制作一张证件照
  * @param {object} opts
@@ -929,8 +919,6 @@ function localMatting(croppedPath, session, shortEdge) {
  *   sizeSpec      specs.js 的尺寸规格对象（px / sizeRule / minSizeKB / maxSizeKB /
  *                 cropFaceRatio）—— v0.5.0 起取代原来的 exam 对象
  *   bgHex         底色
- *   session       已加载的推理会话（matting.createSession 产物）
- *   shortEdge     推理短边，默认 384
  *   watermark     水印文字；传空串则不加水印（付费高清版）
  *   cloudSegment  必填，云端精修：(上传图 base64, {alphaOnly?, bgHex?, outTop}) =>
  *                 Promise<{ok, alpha?|image?, finished?, beautyApplied?, secChecked?}>；

@@ -43,15 +43,14 @@
     </view>
   </view>
 
-  <!-- 处理方式：AI 精修策略 + 端上兜底引擎状态合并为一张卡 -->
+  <!-- 处理方式：只有云端精修一条通道（腾讯云人像分割 + 面部轻度提亮），端上不再出片 -->
   <view class="card">
     <view class="card-title">处理方式</view>
     <view class="kv">
-      <text>{{cloudAvailable ? '云端精修 + 端上兜底' : '端上引擎'}}</text>
-      <text class="{{modelReady ? 'ok' : modelError ? 'bad' : 'warn'}}">{{modelStateText}}</text>
+      <text>云端精修</text>
+      <text class="{{cloudAvailable ? 'ok' : 'bad'}}">{{cloudAvailable ? '已连接' : '未连接'}}</text>
     </view>
-    <view class="hint" wx:if="{{modelError}}">失败原因：{{modelError}}，点底部按钮可重试。</view>
-    <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：本次仅在手机本地处理、不上传照片（本地链路不含美颜）。</view>
+    <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：请检查网络后重试。</view>
     <view class="hint" wx:else>照片将上传腾讯云做人像分割、面部轻度提亮，并按所选底色合成后回传，仅用于生成结果。</view>
   </view>
 

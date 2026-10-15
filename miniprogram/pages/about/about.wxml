@@ -15,8 +15,8 @@
 
   <view class="doc-h">开源声明</view>
   <view class="doc-p">本产品使用了以下开源组件，谨向作者与社区致谢：</view>
-  <view class="doc-li">1. <text class="doc-strong">{{modelName}}</text>：端上人像分割模型，许可协议 {{modelLicense}}。来源：{{modelSource}}。模型文件在首次使用时从公共 CDN 下载并缓存在你的手机本地，推理在本地完成。</view>
-  <view class="doc-li">2. 端上推理与设备能力：微信小程序提供的 <text class="doc-strong">wx.createInferenceSession</text>（ONNX 端上推理）与 VisionKit 人脸检测能力。</view>
+  <view class="doc-li">1. <text class="doc-strong">{{modelName}}</text>：许可协议 {{modelLicense}}。来源：{{modelSource}}。<text class="doc-strong">出片流程不使用端上模型</text>——人像分割统一由云端服务完成，正式功能不会把模型文件下载到你的手机上；相关代码仅在开发者自检页面中可选使用。</view>
+  <view class="doc-li">2. 设备能力：微信小程序提供的 VisionKit 人脸检测能力，用于在你的手机本机定位人脸、完成构图裁剪。</view>
   <view class="doc-note">以上开源组件的版权归各自作者所有，其许可协议全文可在相应开源项目仓库中查看。若你是权利人并认为本产品的使用方式不妥，请通过下方方式联系我们。</view>
 
   <view class="doc-h">联系我们</view>

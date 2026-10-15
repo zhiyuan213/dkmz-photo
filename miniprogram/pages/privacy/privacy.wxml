@@ -18,9 +18,9 @@
   <view class="doc-p">制作时，裁剪图会上传至腾讯云做人像分割、面部肤色提亮与换底合成，腾讯云仅返回处理结果；除此之外我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理，也不会向任何第三方共享、转让或公开披露你的信息。</view>
 
   <view class="doc-h">四、第三方与开源组件</view>
-  <view class="doc-p">端上人像分割使用开源模型 MODNet（Apache-2.0 许可，HuggingFace Xenova/modnet 的 ONNX 导出）。模型文件在首次使用时从公共 CDN 下载并缓存在你的手机本地，<text class="doc-strong">推理完全在本地完成</text>。完整声明见「关于与开源声明」。</view>
+  <view class="doc-p"><text class="doc-strong">内容安全检测</text>：在你选择的照片进入上述云端处理前，本产品会先通过<text class="doc-strong">微信提供的内容安全检测能力（security.mediaCheckAsync）</text>做合规校验。校验时，照片会由微信服务器读取一次；若检测不通过，本产品会提示你“图片内容涉嫌违规，请更换照片后重试”，并<text class="doc-strong">不会对该照片做任何后续处理</text>。</view>
   <view class="doc-p">制作时调用腾讯云「人体分析 · 人像分割」服务处理你当次制作的裁剪图，用于获得更精细的人像边缘，并在面部皮肤区域内做保守的亮度微调与磨皮（<text class="doc-strong">不改变面部特征</text>），随后按你选择的底色完成合成。该服务仅返回处理结果，我们仅在服务器内存短时缓存同一用户的处理结果，到期自动清理，不将照片写入磁盘或数据库，不将照片用于训练。</view>
-  <view class="doc-p">若云端服务不可用，本产品会在你的手机本地用开源模型完成抠图与换底（此时不上传照片，也不提供美颜），并在页面上明确提示。</view>
+  <view class="doc-p">本产品代码中包含开源模型 {{modelName}}（{{modelLicense}} 许可，来源：{{modelSource}}），及微信小程序提供的 VisionKit 人脸检测能力。<text class="doc-strong">端上模型不参与你的照片处理</text>：人像分割统一由云端服务完成，正式功能不会把模型文件下载到你的手机上；相关代码仅在开发者自检页面中可选使用。完整声明见「关于与开源声明」。</view>
 
   <view class="doc-h">五、你的权利</view>
   <view class="doc-p">你可随时通过「微信 → 打开本小程序 → 右上角「…」→ 设置」撤回摄像头或相册授权，也可清除小程序缓存。撤回后相关功能将不可用，但不影响其他功能。</view>

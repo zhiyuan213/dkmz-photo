@@ -1,5 +1,4 @@
 const specs = require('../../utils/specs');
-const matting = require('../../utils/matting');
 const pipeline = require('../../utils/pipeline');
 const api = require('../../utils/api');
 
@@ -8,7 +7,7 @@ const RESULT_KEY = 'dkmz_last_result';
 const STEPS = [
   { key: 'crop', label: '人脸检测 · 智能裁剪' },
   { key: 'seccheck', label: '内容安全检测' },
-  { key: 'matting', label: '抠图' },
+  { key: 'matting', label: '云端抠图 · 换底美颜' },
   { key: 'compose', label: '换底合成' },
   { key: 'size', label: '按尺寸导出' },
 ];
@@ -54,15 +53,12 @@ Page({
     // 底色滑动高亮块（与首页一致，位置由 JS 实测）
     bgSlider: 'opacity: 0',
 
-    // AI 精修已默认启用（不再提供开关）：替换背景 + 美颜。
-    // 抠图一律走云端 BDA；云端不可用时自动回退端上 MODNet（此时不含美颜）。
-    // 如需恢复「只替换背景」，把 run() 里的 beautify 传 false 并加 alphaOnly: true
-    //（后端 alphaOnly 出口仍在：只回 alpha 灰度图、端上换底，响应约 13KB）。
+    // 出片只有一条通道：云端精修（腾讯云 BDA 人像分割 + 面部轻度提亮）。
+    // 端上 MODNet 已彻底摘掉（不再预下载 25MB 模型）—— 它既不再参与出片，
+    // 又会因模型下载失败把「选照片」卡死。云端不可用时明确提示，不做本地降级。
+    // 如需恢复「只替换背景」，把 run() 里 cloudSegment 的 beautify 传 false 并加
+    // alphaOnly: true（后端 alphaOnly 出口仍在：只回 alpha 灰度图、端上换底，约 13KB）。
     cloudAvailable: false,
-
-    modelStateText: '准备中…',
-    modelReady: false,
-    modelError: '',
 
     busy: false,
     steps: [],
@@ -102,41 +98,6 @@ Page({
       cloudAvailable: api.isCloudEnabled(),
       steps: STEPS.map((s) => ({ key: s.key, label: s.label, state: 'pending' })),
     }, () => this.updateBgSlider());
-    this.prepareModel();
-  },
-
-  onUnload() {
-    // 会话是全局共享单例，不随页面卸载销毁（见 prepareModel 注释）
-  },
-
-  // ------------------------------------------------------------ 模型准备
-
-  /**
-   * 会话为全局共享（matting.getSharedSession）：整个小程序生命周期只建一次，
-   * 换考试模板/重复进出本页 0ms 复用；卸载页面不销毁，避免下次进入重建。
-   */
-  prepareModel() {
-    this.setData({ modelStateText: '准备中…', modelError: '' });
-    matting
-      .getSharedSession()
-      .then(({ session, loadMs }) => {
-        this.session = session;
-        this.setData({ modelReady: true, modelStateText: '已就绪' });
-      })
-      .catch((err) => {
-        const msg = err && (err.message || err.errMsg || JSON.stringify(err));
-        this.setData({ modelError: msg, modelStateText: '模型准备失败' });
-        // 模型地址由服务端下发，而规格库是异步拉的：首次进页面可能还没拿到地址。
-        // 这里补拉一次规格库再重试；只重试一次，避免网络异常时来回死循环。
-        if (err && err.code === 'NO_MODEL_URL' && !this._modelRetried) {
-          this._modelRetried = true;
-          this.setData({ modelStateText: '获取模型地址…' });
-          specs
-            .refresh()
-            .then(() => this.prepareModel())
-            .catch(() => {});
-        }
-      });
   },
 
   // ------------------------------------------------------------ 交互
@@ -184,9 +145,14 @@ Page({
 
   onPickPhoto() {
     if (this.data.busy) return;
-    if (this.data.modelError) {
-      this._modelRetried = false; // 手动重试时允许再补拉一次规格库
-      this.prepareModel();
+    // 云端不可用时连拍照都不必走：出片只有云端一条通道，提前拦掉，
+    // 避免用户选完照片才被拒（run() 里还有一道同样的兜底）
+    if (!this.data.cloudAvailable) {
+      wx.showModal({
+        title: '服务暂时不可用',
+        content: '云端处理服务未连接，请检查网络后重试',
+        showCancel: false,
+      });
       return;
     }
     wx.showActionSheet({
@@ -267,13 +233,9 @@ Page({
   },
 
   resetSteps() {
-    const mattingLabel = this.data.cloudAvailable ? '云端抠图 · 换底美颜' : '端上抠图';
+    // 只有云端一条通道，步骤标签固定（不再按端上/云端切换）
     this.setData({
-      steps: STEPS.map((s) => ({
-        key: s.key,
-        label: s.key === 'matting' ? mattingLabel : s.label,
-        state: 'pending',
-      })),
+      steps: STEPS.map((s) => ({ key: s.key, label: s.label, state: 'pending' })),
     });
   },
 
@@ -298,7 +260,6 @@ Page({
         imgPath,
         sizeSpec: this.data.size,
         bgHex: bg.hex,
-        session: this.session,
         cloudSegment: (b64, extra) => api.cloudSegment(b64, true, extra),
         // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {
