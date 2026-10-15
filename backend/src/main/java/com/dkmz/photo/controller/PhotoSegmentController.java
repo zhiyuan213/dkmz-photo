@@ -72,6 +72,10 @@ public class PhotoSegmentController {
             return out;
         }
         String image = body == null ? null : (String) body.get("image");
+        // checkImage：内容安全检测专用的**完整原图**（端上整幅缩放后上传，不裁剪）。
+        // 绝不能拿 image（已按证件照构图裁好的工作图）去送检——裁剪会把头部以下的
+        // 违规内容裁掉，微信只能判 pass（实测一张裸照裁剪后过检）。
+        String checkImage = body == null ? null : (String) body.get("checkImage");
         boolean wantBeauty = body != null && Boolean.TRUE.equals(body.get("beauty"));
         // bgHex 存在 ⇒ 成品图模式（后端连换底一起做，端上直接用）
         String bgHex = body == null ? null : (String) body.get("bgHex");
@@ -88,11 +92,20 @@ public class PhotoSegmentController {
 
         // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
         // fail-closed：检测通道异常 / 结果超时未回 → 拒绝处理，绝不放过风险图。
+        // 送检素材必须是**完整原图**（checkImage），不是裁剪后的工作图：
+        // 证件照构图只保留头肩，裁剪图会"洗掉"落在框外的违规内容（旧实现的实际漏检原因）。
         // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填），不用可能为空的请求头。
         boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image), user);
+                boolean hasWholePicture = checkImage != null && !checkImage.isEmpty();
+                if (!hasWholePicture) {
+                    // 端上未上传完整原图 ⇒ 只能退而检测裁剪工作图，裁剪框外的内容检不到。
+                    // 生产端上必须传 checkImage（前后端同批发布）；这里留 WARN 便于发现版本不同步。
+                    log.warn("segment 未收到 checkImage（完整原图），退化为检测裁剪工作图 user={}", userTag(user));
+                }
+                secCheck.checkOrThrow(decodeImage(hasWholePicture ? checkImage : image), user,
+                        hasWholePicture ? "完整原图" : "裁剪工作图(缺 checkImage!)");
                 secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
                 log.warn("segment 拦截违规图片 user={} suggest={}", userTag(user), e.getSuggest());

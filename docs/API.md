@@ -280,9 +280,14 @@ body：`{ "clientNo": "E1759...", "specId": "one-inch", "specOk": true }`
 ## 三B、云端精修（腾讯云 BDA 人像分割）
 
 ### POST /api/photo/segment
-body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
+body：`{ "image": "<base64 或 dataURL>", "checkImage": "<完整原图 base64>", "beauty": false }`
 
 - `image`：base64 ≤5M，分辨率 <2000×2000（超限服务端自动压缩到长边 1920）
+- `checkImage`：**内容安全检测专用的完整原图**（端上整幅等比缩放后的 JPEG base64，
+  长边 1024 起、体积 ≤260KB，**不裁剪**）。⚠️ 不能用 `image` 代替：`image` 是按证件照
+  构图裁好的工作图，裁剪会把头部以下的违规内容裁掉，微信只能判 `pass`
+  （实测一张裸照裁剪后过检）。缺失时后端退化为检测 `image` 并留 WARN —— 那是降级路径，
+  不要依赖。
 - `beauty`：可选，`true` 时先做保守美肤（肤色提亮+磨皮，作用区域 = 自定义分割
   `SegmentCustomizedPortraitPic` 的 **Face-only** mask，不含五官/头发）再抠图；
   需后端 `BDAB_BEAUTY_ENABLED=true`，美肤失败自动退化为纯抠图，不阻断
@@ -303,6 +308,11 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 ⚠️ **接口选型**：旧的同步接口 `security.imgSecCheck`（`/wxa/img_sec_check`）**已于
 2021-09-01 停止维护、当前不可用**（固定报 errcode 47001），不要改回去。现用异步接口
 `security.mediaCheckAsync`（`/wxa/media_check_async`）。
+
+⚠️ **送检素材必须是完整原图**（`checkImage`，整幅等比缩放、不裁剪）。
+证件照构图只保留头肩：拿裁剪图去送检，等于先把自己框外的违规内容裁掉再送审 ——
+实测一张裸照裁剪后 `suggest=pass`。日志里 `图片=完整原图 240KB 3024x4032`
+这一栏就是审计证据，「尺寸」一栏能直接看出有没有误送裁剪工作图（长边 960/1280）。
 
 流程（对上层保持同步语义）：
 1. 提交时把待检图暂存内存（128 位随机 token，10 分钟过期），暴露公网只读地址
@@ -344,7 +354,7 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
   只对小程序 callContainer 通道注入）：公网直连拿不到 ⇒ `{ok:false, code:"NO_OPENID"}`
 - **滑动窗口限流**（内存实现，阈值见 application.yml `photo.segment.rate.*`）：
   单用户 6 次/分钟、60 次/天；全局 30 次/分钟、900 次/天；超限
-  `{ok:false, code:"RATE_LIMITED", msg}`，前端自动回退端上抠图
+  `{ok:false, code:"RATE_LIMITED", msg}`，前端直接提示、不回退本地抠图
 - 局限：公网直连可伪造身份头绕开单用户档（全局档仍兜底）；
   **彻底防刷 = 云托管控制台关闭「公网访问」**（callContainer 走内网不受影响）
 

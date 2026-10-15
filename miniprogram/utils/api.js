@@ -203,6 +203,9 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
   const alphaOnly = !!(extra && extra.alphaOnly);
   // alphaOnly 时不带 bgHex：带了后端就会走成品图模式（回 JPEG，失去 alpha 的流量收益）
   const body = { image: imageBase64, beauty: alphaOnly ? false : !!beautify };
+  // 内容安全检测的送检图：**完整原图**（未裁剪）。缺了后端只能退检裁剪工作图，
+  // 而证件照构图会裁掉头部以下 ⇒ 落在裁剪框外的违规内容会漏检（实测裸照过检）。
+  if (extra && extra.checkImage) body.checkImage = extra.checkImage;
   if (alphaOnly) {
     body.alphaOnly = true;
   } else if (extra && extra.bgHex) {

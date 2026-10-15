@@ -66,6 +66,8 @@ public class IdPhotoController {
         }
 
         String image = body == null ? null : (String) body.get("image");
+        // 与 /api/photo/segment 同策略：送检用完整原图（checkImage），不用裁剪后的工作图
+        String checkImage = body == null ? null : (String) body.get("checkImage");
         String level = body == null ? null : (String) body.get("level");
         boolean acne = body != null && Boolean.TRUE.equals(body.get("acne"));
         if (image == null || image.isEmpty()) {
@@ -74,10 +76,16 @@ public class IdPhotoController {
         }
 
         // ---- 内容安全检测（UGC 合规，与 /api/photo/segment 同策略：fail-closed）----
+        // 送检完整原图；缺失时退化为裁剪图并留 WARN（裁剪会把框外违规内容洗掉）
         // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填）
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image), user);
+                boolean hasWholePicture = checkImage != null && !checkImage.isEmpty();
+                if (!hasWholePicture) {
+                    log.warn("idphoto/process 未收到 checkImage（完整原图），退化为检测裁剪工作图 user={}", user);
+                }
+                secCheck.checkOrThrow(decodeImage(hasWholePicture ? checkImage : image), user,
+                        hasWholePicture ? "完整原图" : "裁剪工作图(缺 checkImage!)");
             } catch (WxSecCheckService.RiskyContentException e) {
                 log.warn("idphoto/process 拦截违规图片 user={} suggest={}", user, e.getSuggest());
                 out.put("code", "RISKY_CONTENT");

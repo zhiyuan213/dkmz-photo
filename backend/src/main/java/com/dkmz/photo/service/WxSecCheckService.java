@@ -1,5 +1,6 @@
 package com.dkmz.photo.service;
 
+import com.dkmz.photo.support.ImageProbe;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -183,29 +184,42 @@ public class WxSecCheckService {
      * 检测图片：提交异步检测并等微信推送结果。
      * pass → 正常返回；risky/review → {@link RiskyContentException}；超时/通道异常 → IllegalStateException。
      *
-     * 每次调用固定输出**一行**汇总日志（接口 + 结果 + 耗时 + 判定），排障时直接 grep
+     * 每次调用固定输出**一行**汇总日志（接口 + 送检图 + 结果 + 耗时 + 判定），排障时直接 grep
      * 「内容安全检测 |」即可，不必在提交行/推送行/结果行之间来回对照。
      */
     public void checkOrThrow(byte[] image, String openid) throws RiskyContentException {
+        checkOrThrow(image, openid, null);
+    }
+
+    /**
+     * 同上，另带送检图来源标注（进审计日志）。
+     *
+     * @param source 如「完整原图」/「裁剪工作图」。**必须如实标注**：证件照构图只保留头肩，
+     *               若把裁剪图送去检测，落在裁剪框外的违规内容会先被我们自己的裁剪
+     *               "洗掉"（实测一张裸照裁剪后仅剩头肩，微信判 pass）。日志里的尺寸
+     *               （裁剪工作图长边 960/1280，手机原图 3000+，一眼可分）就是证据。
+     */
+    public void checkOrThrow(byte[] image, String openid, String source) throws RiskyContentException {
         if (!enabled) {
             log.warn("内容安全检测已被开关关闭（SEC_CHECK_ENABLED=false）—— 仅限本地开发");
             return;
         }
         long startedAt = System.currentTimeMillis();
+        String img = imageTag(image, source);
         Submit submit;
         try {
             submit = submit(image, openid);
         } catch (RuntimeException e) {
             // 提交阶段就失败（白名单未登记 85107 / 缺 openid / 缺公网基址）也必须留一行汇总，
             // 否则这条检测在日志里只剩调用方的异常栈，接口与结果对不上号。
-            summary("-", openid, "提交失败：" + brief(e.getMessage(), 200),
+            summary("-", openid, img, "提交失败：" + brief(e.getMessage(), 200),
                     System.currentTimeMillis() - startedAt, "拦截 fail-closed");
             throw e;
         }
         Verdict v = awaitVerdict(submit.traceId, waitMs);
         long cost = System.currentTimeMillis() - startedAt;
         if (v == null) {
-            summary(submit.traceId, openid,
+            summary(submit.traceId, openid, img,
                     "超时未回结果（" + (waitMs / 1000) + "s 内未收到微信推送）", cost, "拦截 fail-closed");
             throw new IllegalStateException(
                     "内容安全检测未在规定时间内返回结果（" + (waitMs / 1000) + "s）：未收到微信结果推送，"
@@ -213,23 +227,36 @@ public class WxSecCheckService {
         }
         if (v.failed) {
             // 微信侧检测失败（拉不到图 / 内部错误）：不是"没结果"，要如实报出来
-            summary(submit.traceId, openid,
+            summary(submit.traceId, openid, img,
                     "微信侧失败 errcode=" + v.errcode + " " + brief(v.detail, 200), cost, "拦截 fail-closed");
             throw new IllegalStateException("微信侧检测失败 errcode=" + v.errcode + " " + v.detail);
         }
         if ("pass".equalsIgnoreCase(v.suggest)) {
-            summary(submit.traceId, openid, describe(v), cost, "放行");
+            summary(submit.traceId, openid, img, describe(v), cost, "放行");
             return;
         }
         // risky（明确违规）与 review（疑似违规）都按拦截处理
-        summary(submit.traceId, openid, describe(v), cost, "拦截");
+        summary(submit.traceId, openid, img, describe(v), cost, "拦截");
         throw new RiskyContentException(v.suggest);
     }
 
-    /** 单行汇总：接口 + trace_id + 用户 + 结果 + 耗时 + 判定 */
-    private void summary(String traceId, String openid, String verdict, long costMs, String action) {
-        log.info("内容安全检测 | 接口=POST {} | trace_id={} | user={} | 结果={} | 耗时={}ms | 判定={}",
-                PATH_ASYNC, traceId, userTag(openid), verdict, costMs, action);
+    /** 单行汇总：接口 + trace_id + 用户 + 送检图 + 结果 + 耗时 + 判定 */
+    private void summary(String traceId, String openid, String img, String verdict, long costMs, String action) {
+        log.info("内容安全检测 | 接口=POST {} | trace_id={} | user={} | 图片={} | 结果={} | 耗时={}ms | 判定={}",
+                PATH_ASYNC, traceId, userTag(openid), img, verdict, costMs, action);
+    }
+
+    /**
+     * 审计用：送检图来源 + 体积 + 尺寸。
+     * 尺寸是判断「有没有误送裁剪图」的直接证据 —— 裁剪工作图长边只有 960/1280，
+     * 手机原图动辄 3000+，对不上就说明送错了图。
+     */
+    private static String imageTag(byte[] image, String source) {
+        if (image == null) {
+            return "无图";
+        }
+        String src = source == null || source.isEmpty() ? "未标注" : source;
+        return src + " " + Math.max(1, Math.round(image.length / 1024.0)) + "KB " + ImageProbe.describe(image);
     }
 
     private static String describe(Verdict v) {

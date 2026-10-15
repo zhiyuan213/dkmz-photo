@@ -6,7 +6,7 @@
 
   <view class="doc-h">一、我们如何处理你的信息</view>
   <view class="doc-p">为完成「选照片 → 自动裁剪构图 → 一键换底色 → 导出证件照」的全过程，本产品仅处理以下必要信息：</view>
-  <view class="doc-li">1. <text class="doc-strong">你主动选择或拍摄的照片</text>：用于制作证件照。制作时，<text class="doc-strong">裁剪后的照片会加密上传至腾讯云「人体分析 · 人像分割」服务</text>，用于识别人像边缘，并在面部皮肤区域内做保守的肤色提亮与磨皮（不改变面部特征）；服务按你选择的底色完成合成后回传结果，你在手机本地加水印并导出，<text class="doc-strong">我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理</text>（详见第四条）。</view>
+  <view class="doc-li">1. <text class="doc-strong">你主动选择或拍摄的照片</text>：用于制作证件照。<text class="doc-strong">制作前，你选中的整张照片（等比压缩后、不做裁剪）会先提交给微信内容安全检测做合规校验</text>（见第四条）；<text class="doc-strong">校验通过后，裁剪后的照片会加密上传至腾讯云「人体分析 · 人像分割」服务</text>，用于识别人像边缘，并在面部皮肤区域内做保守的肤色提亮与磨皮（不改变面部特征）；服务按你选择的底色完成合成后回传结果，你在手机本地加水印并导出，<text class="doc-strong">我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理</text>（详见第四条）。</view>
   <view class="doc-li">2. <text class="doc-strong">摄像头</text>：当你使用「拍照」功能拍摄证件照时访问。</view>
   <view class="doc-li">3. <text class="doc-strong">相册（读取）</text>：仅读取你在选择照片时主动挑选的那一张。</view>
   <view class="doc-li">4. <text class="doc-strong">相册（写入）</text>：当你点击「保存到相册」时，将制作完成的照片写入你的手机相册。</view>
@@ -15,10 +15,10 @@
   <view class="doc-p">本产品不收集你的姓名、手机号、位置、通讯录、微信运动、麦克风等信息，也不读取你的剪贴板。</view>
 
   <view class="doc-h">三、信息的存储与对外提供</view>
-  <view class="doc-p">制作时，裁剪图会上传至腾讯云做人像分割、面部肤色提亮与换底合成，腾讯云仅返回处理结果；除此之外我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理，也不会向任何第三方共享、转让或公开披露你的信息。</view>
+  <view class="doc-p">制作前，你选中的<text class="doc-strong">整张照片</text>（等比压缩后）会提交给微信做内容安全检测；制作时，裁剪图会上传至腾讯云做人像分割、面部肤色提亮与换底合成，腾讯云仅返回处理结果；除此之外我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理，也不会向任何第三方共享、转让或公开披露你的信息。</view>
 
   <view class="doc-h">四、第三方与开源组件</view>
-  <view class="doc-p"><text class="doc-strong">内容安全检测</text>：在你选择的照片进入上述云端处理前，本产品会先通过<text class="doc-strong">微信提供的内容安全检测能力（security.mediaCheckAsync）</text>做合规校验。校验时，照片会由微信服务器读取一次；若检测不通过，本产品会提示你“图片内容涉嫌违规，请更换照片后重试”，并<text class="doc-strong">不会对该照片做任何后续处理</text>。</view>
+  <view class="doc-p"><text class="doc-strong">内容安全检测</text>：在你选择的照片进入上述云端处理前，本产品会先把你选中的<text class="doc-strong">整张照片</text>（等比压缩后，<text class="doc-strong">不做裁剪</text>，以保证违规内容不会被裁剪掩盖）提交给<text class="doc-strong">微信提供的内容安全检测能力（security.mediaCheckAsync）</text>做合规校验。校验时，该照片会由微信服务器读取一次；若检测不通过，本产品会提示你“图片内容涉嫌违规，请更换照片后重试”，并<text class="doc-strong">不会对该照片做任何后续处理</text>。</view>
   <view class="doc-p">制作时调用腾讯云「人体分析 · 人像分割」服务处理你当次制作的裁剪图，用于获得更精细的人像边缘，并在面部皮肤区域内做保守的亮度微调与磨皮（<text class="doc-strong">不改变面部特征</text>），随后按你选择的底色完成合成。该服务仅返回处理结果，我们仅在服务器内存短时缓存同一用户的处理结果，到期自动清理，不将照片写入磁盘或数据库，不将照片用于训练。</view>
   <view class="doc-p">本产品代码中包含开源模型 {{modelName}}（{{modelLicense}} 许可，来源：{{modelSource}}），及微信小程序提供的 VisionKit 人脸检测能力。<text class="doc-strong">端上模型不参与你的照片处理</text>：人像分割统一由云端服务完成，正式功能不会把模型文件下载到你的手机上；相关代码仅在开发者自检页面中可选使用。完整声明见「关于与开源声明」。</view>
 

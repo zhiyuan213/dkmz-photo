@@ -25,8 +25,10 @@
  *    computeWallMask 必须在 decontaminateEdge 之前算，因为去污染会改写 alpha/RGB、
  *    污染泛洪种子；processHair 用它的结果治深色底上的发丝白霜。
  *
- * 隐私：只有云端一条通道，裁剪图会上传至腾讯云做人像分割/提亮后回传；
- *      处理前的图会经微信内容安全检测（mediaCheckAsync）校验。
+ * 隐私：只有云端一条通道，每次制作会上传两份图 ——
+ *      ① **完整原图**（等比缩放后的 JPEG）：仅用于微信内容安全检测（mediaCheckAsync），
+ *         检测通过后才继续处理；
+ *      ② 证件照裁剪工作图：上传至腾讯云做人像分割/提亮后回传。
  */
 
 const matting = require('./matting');
@@ -831,6 +833,78 @@ function maskFromGrayPng(pngPath) {
 const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85];
 const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
 
+// -------------------------------------- 内容安全检测送检图（完整原图）
+
+/**
+ * 送检图的尺寸/质量阶梯与体积上限。
+ *
+ * 送检图必须是**完整原图**（整幅等比缩放），绝不能是证件照裁剪图：
+ * 证件照构图只保留头部与肩部，裁剪会把落在框外的违规内容（裸露、纹身、
+ * 违禁物等）直接裁掉，微信只能判 pass —— 实测一张裸照裁剪后过检。
+ *
+ * 尺寸/质量可以降（控制体积），但**覆盖范围不能降**：宁可用小一号的整幅图，
+ * 也绝不能用大一号的裁剪图。
+ */
+const CHECK_SIZE_LADDER = [1024, 768];
+const CHECK_QUALITY_LADDER = [0.72, 0.58, 0.45];
+/** 送检图 base64 字节上限（与裁剪工作图合计仍远低于接口体积限制） */
+const CHECK_PAYLOAD_LIMIT = 260 * 1024;
+
+/** 整幅原图等比缩放到 w×h（不裁剪、不留白）后返回画布 */
+function wholeImageCanvas(imgPath, w, h) {
+  return new Promise((resolve, reject) => {
+    const canvas = wx.createOffscreenCanvas({ type: '2d', width: w, height: h });
+    const ctx = canvas.getContext('2d');
+    enableHighQualityScale(ctx);
+    const img = canvas.createImage();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas);
+    };
+    img.onerror = () => reject(new Error('检测送检图解码失败'));
+    img.src = imgPath;
+  });
+}
+
+/**
+ * 生成内容安全检测送检图（完整原图的 JPEG base64）。
+ * 尺寸/质量逐档下探直到落入体积上限；换尺寸才重建画布，同一画布上换质量只重编码。
+ * 失败直接上抛：送检是这个链路的必要环节，生成不了送检图就不能继续
+ *（与后端 fail-closed 同一语义），绝不静默退回「送裁剪图」。
+ */
+function checkImageBase64(imgPath) {
+  return matting.imageSize(imgPath).then(({ width, height }) => {
+    const build = (sizeIndex) => {
+      const scale = Math.min(1, CHECK_SIZE_LADDER[sizeIndex] / Math.max(width, height));
+      const w = Math.max(16, Math.round(width * scale));
+      const h = Math.max(16, Math.round(height * scale));
+      return wholeImageCanvas(imgPath, w, h).then((canvas) => ({ canvas, w, h }));
+    };
+    const attempt = (sizeIndex, qualityIndex) =>
+      build(sizeIndex)
+        .then(({ canvas, w, h }) => exportCanvas(canvas, w, h, CHECK_QUALITY_LADDER[qualityIndex]))
+        .then((p) =>
+          fileToBase64(p).then(
+            (b64) => {
+              removeTempFile(p);
+              return b64;
+            },
+            (error) => {
+              removeTempFile(p);
+              throw error;
+            }
+          )
+        )
+        .then((b64) => {
+          if (b64.length <= CHECK_PAYLOAD_LIMIT) return b64;
+          if (qualityIndex + 1 < CHECK_QUALITY_LADDER.length) return attempt(sizeIndex, qualityIndex + 1);
+          if (sizeIndex + 1 < CHECK_SIZE_LADDER.length) return attempt(sizeIndex + 1, 0);
+          return b64;   // 最小档仍超限：保覆盖优先于保体积
+        });
+    return attempt(0, 0);
+  });
+}
+
 /** 裁剪框越出原图的顶部行数（calcCropBox 只允许顶部越界），用于告知云端强制透明 */
 function outOfSourceTopRows(box, outH) {
   const pxY = box.height / outH;
@@ -839,6 +913,10 @@ function outOfSourceTopRows(box, outH) {
 
 /**
  * 云端精修主流程。
+ *
+ * extra 含 alphaOnly / bgHex / outTop，外加内容安全检测专用的 checkImage
+ *（**完整原图**的 base64，未裁剪；后端只拿它送微信检测，不参与抠图）。
+ *
  * cloudSegment(base64, extra) 需 resolve：
  *   - 只替换背景（alphaOnly）：{ ok:true, alpha, width, height }
  *   - 成品图模式：{ ok:true, image, finished:true, beautyApplied? }
@@ -872,12 +950,16 @@ function cloudMatting(req, cloudSegment) {
       });
   };
   let upload;
-  return shoot(0, 0)
-    .then((prepared) => {
+  // 送检图（完整原图）与裁剪工作图并行准备：串行会白多花一次整图缩放的等待
+  return Promise.all([shoot(0, 0), checkImageBase64(imgPath)])
+    .then(([prepared, checkImage]) => {
       upload = prepared;
-      return cloudSegment(prepared.b64, alphaOnly ? { alphaOnly: true } : {
-        bgHex, outTop: outOfSourceTopRows(box, prepared.size.height),
-      });
+      const extra = alphaOnly
+        ? { alphaOnly: true }
+        : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
+      // 后端拿它去送微信检测；没有它后端只能退检裁剪图，裁剪框外的违规内容会漏检
+      extra.checkImage = checkImage;
+      return cloudSegment(prepared.b64, extra);
     })
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {

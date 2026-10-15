@@ -461,4 +461,44 @@ class WxSecCheckServiceTest {
         assertTrue(line.contains("85107"), line);
         assertTrue(line.contains("判定=拦截 fail-closed"), line);
     }
+
+    /**
+     * 汇总行必须带送检图来源与尺寸 —— 这是「送检的到底是不是完整原图」的审计证据：
+     * 一旦误送裁剪工作图，尺寸会变成 960x1280 一类的长边，与手机原图（3000+）一眼可分，
+     * 不必等审核驳回才发现（实测漏检就是这么发生的）。
+     */
+    @Test
+    void summaryLineCarriesCheckedImageProvenance() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        pushAsync(s, TRACE, "pass", 100);
+
+        List<ILoggingEvent> lines = infoLines(() -> {
+            try {
+                s.checkOrThrow(minimalJpeg(3024, 4032), "oUser123456", "完整原图");
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertEquals(1, lines.size());
+        String line = lines.get(0).getFormattedMessage();
+        assertTrue(line.contains("图片=完整原图"), line);
+        assertTrue(line.contains("3024x4032"), line);
+        assertTrue(line.contains("KB"), line);
+    }
+
+    /** 只含 SOI + APP0 + SOF0 + EOI 的最小 JPEG：ImageProbe 只解析文件头 */
+    private static byte[] minimalJpeg(int w, int h) {
+        return new byte[] {
+                (byte) 0xFF, (byte) 0xD8,
+                (byte) 0xFF, (byte) 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00,
+                0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+                (byte) 0xFF, (byte) 0xC0, 0x00, 0x11, 0x08,
+                (byte) (h >> 8), (byte) h,
+                (byte) (w >> 8), (byte) w,
+                0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+                (byte) 0xFF, (byte) 0xD9,
+        };
+    }
 }
