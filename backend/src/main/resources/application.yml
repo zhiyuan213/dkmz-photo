@@ -73,6 +73,17 @@ photo:
   review-mode: ${REVIEW_MODE:false}
   job-token: ${PHOTO_JOB_TOKEN:change-me}
   # ------------------------------------------------------------
+  # 微信内容安全检测（security.imgSecCheck，UGC 图片合规，审核整改项）
+  #   用户上传的照片在进入云端处理前先过微信图片安全检测：
+  #   · 违规图（errcode 87014）→ 拦截并提示「图片内容涉嫌违规」
+  #   · 检测通道不可用 → 一并拒绝（fail-closed，绝不放过风险图）
+  #   通道：云托管内网 http://api.weixin.qq.com 免鉴权（默认），
+  #         降级 https + WX_APPID/WX_SECRET 的 access_token
+  #   SEC_CHECK_ENABLED 仅限本地开发置 false 跳过；生产必须为 true（默认）
+  # ------------------------------------------------------------
+  sec-check:
+    enabled: ${SEC_CHECK_ENABLED:true}
+  # ------------------------------------------------------------
   # 端上抠图模型（MODNet / ONNX，25MB，**不能打进小程序包**，只能运行时下载）
   #   文件位置：classpath:/static/models/<file-name>，随镜像一起部署
   #   XPHOTO_MODEL_URL：**对外可访问的 https 绝对地址**，如

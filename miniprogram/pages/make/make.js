@@ -321,8 +321,14 @@ Page({
         wx.navigateTo({ url: '/pages/result/result' });
       })
       .catch((err) => {
+        // 内容安全拦截：仅提示「内容有违规嫌疑」（审核整改要求），不暴露技术细节
+        const risky = err && err.code === 'RISKY_CONTENT';
         const msg = err && (err.message || err.errMsg || JSON.stringify(err));
-        wx.showModal({ title: '制作失败', content: msg, showCancel: false });
+        wx.showModal({
+          title: risky ? '无法使用该照片' : '制作失败',
+          content: risky ? '图片内容涉嫌违规，请更换照片后重试' : msg,
+          showCancel: false,
+        });
       })
       .then(() => this.setData({ busy: false, progressText: '' }));
   },

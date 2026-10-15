@@ -4,6 +4,7 @@ import com.dkmz.photo.service.BdaSegmentService;
 import com.dkmz.photo.service.PortraitProcessingService;
 import com.dkmz.photo.service.PhotoUserVerifier;
 import com.dkmz.photo.service.IdPhotoBeautyService;
+import com.dkmz.photo.service.WxSecCheckService;
 import com.dkmz.photo.support.SegmentRateLimiter;
 import com.dkmz.photo.support.BackgroundColorEstimator;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -29,15 +31,16 @@ public class IdPhotoController {
     private final PortraitProcessingService processing;
     private final SegmentRateLimiter rateLimiter;
     private final PhotoUserVerifier users;
+    private final WxSecCheckService secCheck;
 
     /** 可选共享口令；非空时强制校验请求头 X-Photo-Token（公网直连接口的防刷闸门） */
     @Value("${photo.api-token:}")
     private String apiToken;
 
     public IdPhotoController(BdaSegmentService segmentService, PortraitProcessingService processing,
-            PhotoUserVerifier users, SegmentRateLimiter rateLimiter) {
+            PhotoUserVerifier users, SegmentRateLimiter rateLimiter, WxSecCheckService secCheck) {
         this.segmentService = segmentService; this.processing = processing;
-        this.users = users; this.rateLimiter = rateLimiter;
+        this.users = users; this.rateLimiter = rateLimiter; this.secCheck = secCheck;
     }
 
     @PostMapping("/process")
@@ -68,6 +71,23 @@ public class IdPhotoController {
         if (image == null || image.isEmpty()) {
             out.put("message", "缺少 image 参数");
             return out;
+        }
+
+        // ---- 内容安全检测（UGC 合规，与 /api/photo/segment 同策略：fail-closed）----
+        if (secCheck.isEnabled()) {
+            try {
+                secCheck.checkOrThrow(decodeImage(image));
+            } catch (WxSecCheckService.RiskyContentException e) {
+                log.warn("idphoto/process 拦截违规图片 user={}", user);
+                out.put("code", "RISKY_CONTENT");
+                out.put("message", "图片内容涉嫌违规，请更换照片后重试");
+                return out;
+            } catch (Exception e) {
+                log.warn("idphoto/process 内容检测不可用: {}", e.toString());
+                out.put("code", "SEC_CHECK_UNAVAILABLE");
+                out.put("message", "内容安全检测暂不可用，请稍后重试");
+                return out;
+            }
         }
 
         boolean portrait = "portrait".equalsIgnoreCase(level == null ? "" : level.trim());
@@ -104,5 +124,15 @@ public class IdPhotoController {
             out.put("message", "服务暂时不可用，请稍后重试");
             return out;
         }
+    }
+
+    /** base64 → 字节。容忍 data URL 前缀与换行；解码失败交由上层按坏图处理 */
+    private static byte[] decodeImage(String base64) {
+        String s = base64.trim();
+        int comma = s.indexOf(',');
+        if (s.startsWith("data:") && comma > 0) {
+            s = s.substring(comma + 1);
+        }
+        return Base64.getMimeDecoder().decode(s);
     }
 }

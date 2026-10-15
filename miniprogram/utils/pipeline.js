@@ -880,7 +880,10 @@ function cloudMatting(req, cloudSegment) {
     })
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {
-        throw new Error((res && res.msg) || '云端精修不可用');
+        // 保留后端错误码（如 RISKY_CONTENT）——上层要按码决定「回退本地」还是「直接中断」
+        const err = new Error((res && res.msg) || '云端精修不可用');
+        err.code = res && res.code;
+        throw err;
       }
       const beautyApplied = res.beautyApplied === true;
       // 只替换背景：云端只回 alpha 灰度图，端上用本地裁剪图自己换底
@@ -1018,6 +1021,10 @@ function makeIdPhoto(opts) {
       )
         .then((r) => finish(r, 'cloud'))
         .catch((e) => {
+          // 内容违规：按合规要求直接中断，绝不回退本地出片（风险图不得以任何通道生成）
+          if (e && e.code === 'RISKY_CONTENT') {
+            throw e;
+          }
           // api 层 reject 的是 {code,msg} 对象而非 Error，msg/message 都兜住
           const why = ((e && (e.msg || e.message)) ? String(e.msg || e.message) : '')
             .replace(/\s+/g, ' ').trim().slice(0, 50);

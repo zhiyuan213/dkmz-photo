@@ -4,6 +4,7 @@ import com.dkmz.photo.service.BdaSegmentService;
 import com.dkmz.photo.service.PortraitProcessingService;
 import com.dkmz.photo.service.PortraitCompositeService;
 import com.dkmz.photo.service.PhotoUserVerifier;
+import com.dkmz.photo.service.WxSecCheckService;
 import com.dkmz.photo.support.AlphaExtractor;
 import com.dkmz.photo.support.BackgroundColorEstimator;
 import com.dkmz.photo.support.OpenidSupport;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,11 +33,13 @@ public class PhotoSegmentController {
     private final PhotoUserVerifier users;
     private final PortraitCompositeService compositeService;
     private final SegmentRateLimiter rateLimiter;
+    private final WxSecCheckService secCheck;
 
     public PhotoSegmentController(BdaSegmentService segmentService, PortraitProcessingService processing,
-            PhotoUserVerifier users, PortraitCompositeService compositeService, SegmentRateLimiter rateLimiter) {
+            PhotoUserVerifier users, PortraitCompositeService compositeService, SegmentRateLimiter rateLimiter,
+            WxSecCheckService secCheck) {
         this.segmentService = segmentService; this.processing = processing; this.users = users;
-        this.compositeService = compositeService; this.rateLimiter = rateLimiter;
+        this.compositeService = compositeService; this.rateLimiter = rateLimiter; this.secCheck = secCheck;
     }
 
     @PostMapping("/segment")
@@ -80,6 +84,26 @@ public class PhotoSegmentController {
             out.put("code", "BAD_REQUEST");
             out.put("msg", "缺少 image 参数");
             return out;
+        }
+
+        // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 imgSecCheck）----
+        // fail-closed：检测通道不可用时拒绝处理，绝不放过风险图。
+        if (secCheck.isEnabled()) {
+            try {
+                secCheck.checkOrThrow(decodeImage(image));
+            } catch (WxSecCheckService.RiskyContentException e) {
+                log.warn("segment 拦截违规图片 user={}", userTag(openid));
+                out.put("ok", false);
+                out.put("code", "RISKY_CONTENT");
+                out.put("msg", "图片内容涉嫌违规，请更换照片后重试");
+                return out;
+            } catch (Exception e) {
+                log.warn("segment 内容检测不可用 user={}: {}", userTag(openid), e.toString());
+                out.put("ok", false);
+                out.put("code", "SEC_CHECK_UNAVAILABLE");
+                out.put("msg", "内容安全检测暂不可用，请稍后重试");
+                return out;
+            }
         }
 
         long t0 = System.currentTimeMillis();
@@ -164,6 +188,16 @@ public class PhotoSegmentController {
     /** 日志用的用户标识：只取 openid 前 8 位，绝不整串落日志 */
     private static String userTag(String openid) {
         return openid == null ? "anonymous" : openid.substring(0, Math.min(8, openid.length())) + "…";
+    }
+
+    /** base64 → 字节。容忍 data URL 前缀与换行；解码失败视为坏图 */
+    private static byte[] decodeImage(String base64) {
+        String s = base64.trim();
+        int comma = s.indexOf(',');
+        if (s.startsWith("data:") && comma > 0) {
+            s = s.substring(comma + 1);
+        }
+        return Base64.getMimeDecoder().decode(s);
     }
 
     /** JSON 数字/字符串都能吃，非法值退回默认值 */

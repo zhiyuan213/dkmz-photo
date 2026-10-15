@@ -292,7 +292,20 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 返回：
 - 成功 `{ ok:true, image:"<透明底PNG base64>", beautyApplied:bool, costMs }`
 - 未开通 `{ ok:false, code:"BDA_DISABLED", msg }`
+- **内容违规** `{ ok:false, code:"RISKY_CONTENT", msg:"图片内容涉嫌违规，请更换照片后重试" }`
+  —— 2026-10-15 审核整改项：用户上传图片属 UGC，进云端处理前必须先过微信
+  `security.imgSecCheck`；端上收到此码**不得回退本地抠图**，直接中断并提示
+- 检测不可用 `{ ok:false, code:"SEC_CHECK_UNAVAILABLE", msg }` —— fail-closed，一并拒绝
 - 失败 `{ ok:false, code:"BAD_REQUEST"|"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
+
+内容安全（2026-10-15 起，两个收图接口 `/api/photo/segment` 与 `/idphoto/process` 同策略）：
+- 通道：云托管内网 `http://api.weixin.qq.com/wxa/img_sec_check`（免鉴权，网关自动注入
+  access_token）→ 失败降级 `https` + `WX_APPID/WX_SECRET` 换取的 access_token
+  （`40001/42001` 刷新后重试一次）
+- 图片限制：≤1M、JPEG/PNG（上传裁剪图 ~67KB，天然满足）
+- 频率限制：imgSecCheck 单 appId 100 次/分钟，超出即视为检测不可用走 fail-closed；
+  上层已有用户级限流，正常流量远够
+- 开关：`SEC_CHECK_ENABLED`（默认 `true`）**仅限本地开发**置 `false` 跳过，生产必须开
 
 防刷（2026-10-13 起）：
 - **必须携带微信侧注入的用户身份**（`X-WX-OPENID` / `X-WX-FROM-OPENID`，云托管
