@@ -1008,11 +1008,19 @@ function makeIdPhoto(opts) {
           mattingMode: mode,
         };
       };
-      const local = () => localMatting(croppedPath, o.session, o.shortEdge || 384).then((r) => finish(r, 'local'));
+      // ============================================================
+      // 视频制作只有一条通道：云端精修（含内容安全检测）。
+      // 已取消「云端失败静默回退端上抠图」——降级会让用户拿到不一致的成片，
+      // 且会绕过内容安全检测。任何失败都直接抛出，由页面明确提示原因。
+      // （端上 MODNet 推理保留在 matting.js 供实验室页自检使用，不再参与出片。）
+      // ============================================================
       if (typeof o.cloudSegment !== 'function') {
-        return local();
+        const err = new Error('云端处理服务未连接，请检查网络后重试');
+        err.code = 'CLOUD_UNAVAILABLE';
+        return Promise.reject(err);
       }
-      // 云端优先，任何失败（未开通/网络/服务错误）静默回退端上，出片不中断
+      // 内容安全检测排在抠图之前（后端在云端处理前先做检测并等结果）
+      step('seccheck');
       return cloudMatting(
         {
           imgPath: o.imgPath,
@@ -1026,20 +1034,7 @@ function makeIdPhoto(opts) {
         },
         o.cloudSegment
       )
-        .then((r) => finish(r, 'cloud'))
-        .catch((e) => {
-          // 内容违规：按合规要求直接中断，绝不回退本地出片（风险图不得以任何通道生成）
-          if (e && e.code === 'RISKY_CONTENT') {
-            throw e;
-          }
-          // api 层 reject 的是 {code,msg} 对象而非 Error，msg/message 都兜住
-          const why = ((e && (e.msg || e.message)) ? String(e.msg || e.message) : '')
-            .replace(/\s+/g, ' ').trim().slice(0, 50);
-          console.warn('[photo][pipeline] 云端精修失败，回退端上抠图：', e && e.message);
-          // 失败原因透出到结果页「处理明细」，便于用户/排查直接看到 BDA 报错
-          metrics.push({ k: '云端抠图', v: `失败，已回退端上${why ? `（${why}）` : ''}` });
-          return local();
-        });
+        .then((r) => finish(r, 'cloud'));
     })
     .then((ctx0) => {
       step('compose');

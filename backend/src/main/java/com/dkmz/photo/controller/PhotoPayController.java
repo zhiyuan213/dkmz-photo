@@ -3,6 +3,7 @@ package com.dkmz.photo.controller;
 import com.dkmz.photo.dto.PayGoods;
 import com.dkmz.photo.service.EntitlementService;
 import com.dkmz.photo.service.PhotoPayService;
+import com.dkmz.photo.service.WxSecCheckService;
 import com.dkmz.photo.support.OpenidSupport;
 import com.dkmz.photo.support.PushSignUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -53,6 +54,7 @@ public class PhotoPayController {
     private final ObjectMapper om = new ObjectMapper();
     private final PhotoPayService payService;
     private final EntitlementService entitlementService;
+    private final WxSecCheckService secCheck;
 
     @Value("${wx.pay.push-token:}")
     private String pushToken;
@@ -60,9 +62,11 @@ public class PhotoPayController {
     @Value("${photo.job-token:change-me}")
     private String jobToken;
 
-    public PhotoPayController(PhotoPayService payService, EntitlementService entitlementService) {
+    public PhotoPayController(PhotoPayService payService, EntitlementService entitlementService,
+            WxSecCheckService secCheck) {
         this.payService = payService;
         this.entitlementService = entitlementService;
+        this.secCheck = secCheck;
     }
 
     // ==========================================================
@@ -275,6 +279,15 @@ public class PhotoPayController {
                         "evidence", "系统繁忙，暂时无法受理退款申请，请稍后重试。");
             }
             return iosRefundReply(decision);
+        }
+
+        // 图片内容安全检测结果推送（security.mediaCheckAsync）
+        if ("wxa_media_check".equals(event)) {
+            boolean matched = secCheck.acceptPush(node);
+            log.info("内容安全检测推送 trace_id={} 命中等待中的提交={}",
+                    node.path("trace_id").asText(""), matched);
+            // 即使没匹配到（超时已清理）也要确认成功，否则微信会重推 15 次
+            return reply(xml, true, "success");
         }
 
         log.info("非发货/退款事件（Event={}），直接确认", event);

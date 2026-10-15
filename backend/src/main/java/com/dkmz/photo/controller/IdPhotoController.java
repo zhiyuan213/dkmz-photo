@@ -76,9 +76,9 @@ public class IdPhotoController {
         // ---- 内容安全检测（UGC 合规，与 /api/photo/segment 同策略：fail-closed）----
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image));
+                secCheck.checkOrThrow(decodeImage(image), null);
             } catch (WxSecCheckService.RiskyContentException e) {
-                log.warn("idphoto/process 拦截违规图片 user={}", user);
+                log.warn("idphoto/process 拦截违规图片 user={} suggest={}", user, e.getSuggest());
                 out.put("code", "RISKY_CONTENT");
                 out.put("message", "图片内容涉嫌违规，请更换照片后重试");
                 return out;

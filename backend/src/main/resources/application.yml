@@ -73,22 +73,29 @@ photo:
   review-mode: ${REVIEW_MODE:false}
   job-token: ${PHOTO_JOB_TOKEN:change-me}
   # ------------------------------------------------------------
-  # 微信内容安全检测（security.imgSecCheck，UGC 图片合规，审核整改项）
-  #   用户上传的照片在进入云端处理前先过微信图片安全检测：
-  #   · 违规图（errcode 87014）→ 拦截并提示「图片内容涉嫌违规」
-  #   · 检测通道不可用 → 一并拒绝（fail-closed，绝不放过风险图）
-  #   通道①：云托管「开放接口服务」云调用（默认）—— 免 access_token，
-  #     ⚠️ 前置配置（缺一不可，都在云托管控制台）：
-  #        a. 服务 dkmz-backend →「服务管理-云调用-开放接口服务」开关打开
-  #        b.「微信令牌权限配置」登记接口 /wxa/img_sec_check
-  #        c. 开启后必须重新构建部署（对已有版本不生效）
-  #   通道②（兜底）：https + WX_APPID/WX_SECRET 换 access_token，
-  #     ⚠️ 需把服务器出口 IP 加进 mp 后台「IP 白名单」，云托管出口 IP
-  #        动态，故此通道仅在配置了固定出口 IP 时才可靠
+  # 微信内容安全检测（security.mediaCheckAsync，UGC 图片合规，审核整改项）
+  #   ⚠️ 接口选型：旧的同步接口 security.imgSecCheck（/wxa/img_sec_check）已于
+  #      2021-09-01 停止维护、当前不可用（固定报 47001），不要再改回去。
+  #      现用异步接口 mediaCheckAsync：提交 → 微信异步检测 → 结果推送到「消息推送」地址。
+  #   用户上传照片在进入云端处理前先过检测：
+  #     · suggest=risky / review → 拦截并提示「图片内容涉嫌违规」
+  #     · 通道异常或结果超时未回 → 一并拒绝（fail-closed，绝不放过风险图）
+  #   前置配置（缺一不可）：
+  #     a. 云托管控制台「服务管理-云调用-开放接口服务」开关打开
+  #     b. 「微信令牌权限配置」登记接口 /wxa/media_check_async
+  #     c. 开启后重新构建部署（对已有版本不生效）
+  #     d. mp 后台「开发管理-消息推送」配置到本服务的 /api/photo/pay/notify
+  #        （与虚拟支付推送同一个 URL，服务端按 Event 分派）
+  #     e. XPHOTO_PUBLIC_BASE_URL 配成本服务公网基址 —— mediaCheckAsync 要求
+  #        图片公网可访问，微信会主动来拉 /api/photo/sec-check/media/{token}
   #   SEC_CHECK_ENABLED 仅限本地开发置 false 跳过；生产必须为 true（默认）
   # ------------------------------------------------------------
   sec-check:
     enabled: ${SEC_CHECK_ENABLED:true}
+    # 等微信推送结果的最长时间（毫秒），超时按不可用处理（fail-closed）
+    wait-ms: ${SEC_CHECK_WAIT_MS:10000}
+    # 本服务公网基址，如 https://dkmz-backend-xxx.sh.run.tcloudbase.com（末尾不要带 /）
+    public-base-url: ${XPHOTO_PUBLIC_BASE_URL:}
   # ------------------------------------------------------------
   # 端上抠图模型（MODNet / ONNX，25MB，**不能打进小程序包**，只能运行时下载）
   #   文件位置：classpath:/static/models/<file-name>，随镜像一起部署

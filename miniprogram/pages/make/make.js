@@ -7,6 +7,7 @@ const RESULT_KEY = 'dkmz_last_result';
 
 const STEPS = [
   { key: 'crop', label: '人脸检测 · 智能裁剪' },
+  { key: 'seccheck', label: '内容安全检测' },
   { key: 'matting', label: '抠图' },
   { key: 'compose', label: '换底合成' },
   { key: 'size', label: '按尺寸导出' },
@@ -277,17 +278,16 @@ Page({
   },
 
   run(imgPath) {
-    // 抠图一律云端优先，且固定带美颜（AI 精修已默认启用、不可关闭）：
-    //   云端可用 → 上传裁剪图，云端一次完成「人像分割 + 面部提亮 + 换底合成」，
-    //             回不透明成品图（约 60~90KB），端上只加水印/导出
-    //   云端不可用 → 静默回退端上 MODNet（本地处理、不上传，此时不含美颜）
-    const useCloud = this.data.cloudAvailable;
-    if (!useCloud && !this.session) {
-      wx.showToast({ title: '模型未就绪', icon: 'none' });
+    // 出片只有一条通道：云端精修（含内容安全检测）。端上 MODNet 不再参与出片，
+    // 因此云端不可用时不能"降级出片"，而是明确提示用户 —— 降级会给出不一致的成片，
+    // 也会绕过内容安全检测。
+    if (!this.data.cloudAvailable) {
+      wx.showModal({
+        title: '服务暂时不可用',
+        content: '云端处理服务未连接，请检查网络后重试',
+        showCancel: false,
+      });
       return;
-    }
-    if (!useCloud) {
-      wx.showToast({ title: '未连接云端，使用本地抠图（不含美颜）', icon: 'none' });
     }
     const bg = this.data.bgOptions[this.data.bgIndex] || specs.getBackground('white');
     this.setData({ busy: true, progressText: '' });
@@ -299,7 +299,7 @@ Page({
         sizeSpec: this.data.size,
         bgHex: bg.hex,
         session: this.session,
-        cloudSegment: useCloud ? (b64, extra) => api.cloudSegment(b64, true, extra) : null,
+        cloudSegment: (b64, extra) => api.cloudSegment(b64, true, extra),
         // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {
           this.data.steps.forEach((s) => {
@@ -323,10 +323,11 @@ Page({
       .catch((err) => {
         // 内容安全拦截：仅提示「内容有违规嫌疑」（审核整改要求），不暴露技术细节
         const risky = err && err.code === 'RISKY_CONTENT';
-        const msg = err && (err.message || err.errMsg || JSON.stringify(err));
+        // api 层 reject 的是 {code,msg} 对象，pipeline 抛的是 Error，两种都要兜住
+        const msg = (err && (err.msg || err.message || err.errMsg)) || '未知错误，请稍后重试';
         wx.showModal({
           title: risky ? '无法使用该照片' : '制作失败',
-          content: risky ? '图片内容涉嫌违规，请更换照片后重试' : msg,
+          content: risky ? '图片内容涉嫌违规，请更换照片后重试' : String(msg),
           showCancel: false,
         });
       })

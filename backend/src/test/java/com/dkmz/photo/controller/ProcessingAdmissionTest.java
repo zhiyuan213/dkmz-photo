@@ -45,8 +45,8 @@ class ProcessingAdmissionTest {
         when(limiter.tryAcquire("real-user")).thenReturn(null);
         when(segment.isEnabled()).thenReturn(true);
         when(secCheck.isEnabled()).thenReturn(true);
-        doThrow(new WxSecCheckService.RiskyContentException())
-                .when(secCheck).checkOrThrow(any(byte[].class));
+        doThrow(new WxSecCheckService.RiskyContentException("risky"))
+                .when(secCheck).checkOrThrow(any(byte[].class), any());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck)).build();

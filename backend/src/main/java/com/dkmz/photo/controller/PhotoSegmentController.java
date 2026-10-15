@@ -86,15 +86,15 @@ public class PhotoSegmentController {
             return out;
         }
 
-        // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 imgSecCheck）----
-        // fail-closed：检测通道不可用时拒绝处理，绝不放过风险图。
+        // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
+        // fail-closed：检测通道异常 / 结果超时未回 → 拒绝处理，绝不放过风险图。
         boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image));
+                secCheck.checkOrThrow(decodeImage(image), openid);
                 secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
-                log.warn("segment 拦截违规图片 user={}", userTag(openid));
+                log.warn("segment 拦截违规图片 user={} suggest={}", userTag(openid), e.getSuggest());
                 out.put("ok", false);
                 out.put("code", "RISKY_CONTENT");
                 out.put("msg", "图片内容涉嫌违规，请更换照片后重试");

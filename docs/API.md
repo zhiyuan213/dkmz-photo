@@ -294,18 +294,39 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 - 未开通 `{ ok:false, code:"BDA_DISABLED", msg }`
 - **内容违规** `{ ok:false, code:"RISKY_CONTENT", msg:"图片内容涉嫌违规，请更换照片后重试" }`
   —— 2026-10-15 审核整改项：用户上传图片属 UGC，进云端处理前必须先过微信
-  `security.imgSecCheck`；端上收到此码**不得回退本地抠图**，直接中断并提示
+  `security.mediaCheckAsync`；端上收到此码**不得回退本地抠图**，直接中断并提示
 - 检测不可用 `{ ok:false, code:"SEC_CHECK_UNAVAILABLE", msg }` —— fail-closed，一并拒绝
 - 失败 `{ ok:false, code:"BAD_REQUEST"|"BAD_IMAGE"|"IMAGE_TOO_LARGE"|"BDA_FAIL", msg }`
 
 内容安全（2026-10-15 起，两个收图接口 `/api/photo/segment` 与 `/idphoto/process` 同策略）：
-- 通道：云托管内网 `http://api.weixin.qq.com/wxa/img_sec_check`（免鉴权，网关自动注入
-  access_token）→ 失败降级 `https` + `WX_APPID/WX_SECRET` 换取的 access_token
-  （`40001/42001` 刷新后重试一次）
-- 图片限制：≤1M、JPEG/PNG（上传裁剪图 ~67KB，天然满足）
-- 频率限制：imgSecCheck 单 appId 100 次/分钟，超出即视为检测不可用走 fail-closed；
-  上层已有用户级限流，正常流量远够
-- 开关：`SEC_CHECK_ENABLED`（默认 `true`）**仅限本地开发**置 `false` 跳过，生产必须开
+
+⚠️ **接口选型**：旧的同步接口 `security.imgSecCheck`（`/wxa/img_sec_check`）**已于
+2021-09-01 停止维护、当前不可用**（固定报 errcode 47001），不要改回去。现用异步接口
+`security.mediaCheckAsync`（`/wxa/media_check_async`）。
+
+流程（对上层保持同步语义）：
+1. 提交时把待检图暂存内存（128 位随机 token，10 分钟过期），暴露公网只读地址
+   `GET /api/photo/sec-check/media/{token}` 供**微信服务器回拉**（media_url 必须公网可访问）
+2. 调 `media_check_async`（`media_type=1`、`version=2`、`scene=1`、带 openid）→ 得 `trace_id`
+3. 微信异步检测完，把结果推送到 mp 后台配置的「消息推送」地址
+   （事件 `wxa_media_check`）→ `POST /api/photo/pay/notify` 按 Event 分派给
+   `WxSecCheckService.acceptPush`（与虚拟支付推送同一个 URL）
+4. 服务在原地轮询等结果，默认最长 `SEC_CHECK_WAIT_MS=10000` 毫秒
+
+结果语义：`suggest` = `pass` 放行 / `risky` 拦截 / `review` 也按拦截处理。
+通道异常或超时未回结果 → fail-closed 拒绝。
+
+前置配置（缺一不可）：
+| 项 | 位置 |
+|---|---|
+| 开「开放接口服务」 | 云托管控制台 → 服务 → 服务管理 → 云调用 |
+| 登记接口 `/wxa/media_check_async` | 同上 → 微信令牌权限配置 |
+| 消息推送指向 `/api/photo/pay/notify` | mp 后台 → 开发管理 → 消息推送 |
+| `XPHOTO_PUBLIC_BASE_URL` | 云托管环境变量 = 本服务公网基址（末尾不带 `/`） |
+| 开完开关后**重新构建部署** | 否则对已有版本不生效 |
+
+运维自检（不用真机拍照即可验证全链路）：
+`GET /api/photo/sec-check/selftest?token=<PHOTO_JOB_TOKEN>`
 
 防刷（2026-10-13 起）：
 - **必须携带微信侧注入的用户身份**（`X-WX-OPENID` / `X-WX-FROM-OPENID`，云托管
