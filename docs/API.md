@@ -307,26 +307,37 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 流程（对上层保持同步语义）：
 1. 提交时把待检图暂存内存（128 位随机 token，10 分钟过期），暴露公网只读地址
    `GET /api/photo/sec-check/media/{token}` 供**微信服务器回拉**（media_url 必须公网可访问）
-2. 调 `media_check_async`（`media_type=1`、`version=2`、`scene=1`、带 openid）→ 得 `trace_id`
+2. 调 `media_check_async`（`media_type=2`、`version=2`、`scene=1`、**openid 必填**）→ 得 `trace_id`
+   · ⚠️ v2 接口 `media_type`：**1 = 音频，2 = 图片**（v1 相反，别照老文档写 1）
+   · ⚠️ `openid` 为必填项（且该用户近两小时访问过小程序）；两个入口都传
+     `PhotoUserVerifier.verify()` 得到的真实 openid，**不能用可能为空的请求头**
 3. 微信异步检测完，把结果推送到 mp 后台配置的「消息推送」地址
-   （事件 `wxa_media_check`）→ `POST /api/photo/pay/notify` 按 Event 分派给
+   （事件 `wxa_media_check`，30 分钟内到达）→ `POST /api/photo/pay/notify` 按 Event 分派给
    `WxSecCheckService.acceptPush`（与虚拟支付推送同一个 URL）
 4. 服务在原地轮询等结果，默认最长 `SEC_CHECK_WAIT_MS=10000` 毫秒
 
-结果语义：`suggest` = `pass` 放行 / `risky` 拦截 / `review` 也按拦截处理。
-通道异常或超时未回结果 → fail-closed 拒绝。
+结果语义（`suggest` 依次从 `result` → 顶层 → `detail[0]` 取，`result` 是官方的综合结果）：
+`pass` 放行 / `risky` 拦截 / `review` 也按拦截处理。
+通道异常或超时未回结果 → fail-closed 拒绝；**微信明确报错（errcode≠0）立即上抛**，
+不当成「结果没到」，避免白等满等待时间再给错误提示：
+- `errcode=-1008` → 微信下载 media_url 失败，检查 `XPHOTO_PUBLIC_BASE_URL` 是否公网可访问
+- 解析 detail 时必须按节点类型处理：XML 推送经 `PushSignUtil.xmlToJson` 后
+  `<detail>` 是**嵌套对象/对象数组**，用 `asText()` 取会恒得空串 ⇒ 每次都超时
 
 前置配置（缺一不可）：
 | 项 | 位置 |
 |---|---|
 | 开「开放接口服务」 | 云托管控制台 → 服务 → 服务管理 → 云调用 |
-| 登记接口 `/wxa/media_check_async` | 同上 → 微信令牌权限配置 |
-| 消息推送指向 `/api/photo/pay/notify` | mp 后台 → 开发管理 → 消息推送 |
+| 登记接口 `/wxa/media_check_async` | 同上 → 微信令牌权限配置（只填路径，一行一个，保存后全环境生效） |
+| 消息推送指向 `/api/photo/pay/notify` | mp 后台 → 开发管理 → 消息推送（**加解密方式选明文或兼容**，本项目未实现 AES 解密） |
 | `XPHOTO_PUBLIC_BASE_URL` | 云托管环境变量 = 本服务公网基址（末尾不带 `/`） |
-| 开完开关后**重新构建部署** | 否则对已有版本不生效 |
+| 开完开关后**重新构建部署** | 否则对已有版本不生效（官方明确要求） |
 
 运维自检（不用真机拍照即可验证全链路）：
-`GET /api/photo/sec-check/selftest?token=<PHOTO_JOB_TOKEN>`
+`GET /api/photo/sec-check/selftest?token=<PHOTO_JOB_TOKEN>&openid=<真实openid>`
+· 返回里 `received=true` 表示推送链路已通（微信确实把结果推到了 notify）；
+`ok=true` 表示检测本身成功。两者分开，便于区分「链路没配好」与「微信拉不到图」。
+· openid 也可由云托管注入的 `X-WX-OPENID` 头带入（用 callContainer 调用时）。
 
 防刷（2026-10-13 起）：
 - **必须携带微信侧注入的用户身份**（`X-WX-OPENID` / `X-WX-FROM-OPENID`，云托管
@@ -341,9 +352,9 @@ body：`{ "image": "<base64 或 dataURL>", "beauty": false }`
 SDK 错误码已翻译成中文（分辨率超限/无人脸/欠费等可直接 toast）。
 日志严禁打印图片 base64（SDK 日志级别已收敛到 WARN）。
 
-调用 `SegmentPortraitPic`（Scene=GEN，RspImgType=base64）。前端在用户开启
-「云端精修」时调用，拿到透明底 PNG 后在端上重建 alpha 继续换底合成；
-**任何失败一律回退端上 MODNet 抠图**，出片不中断。
+调用 `SegmentPortraitPic`（Scene=GEN，RspImgType=base64）。**出片只有云端这一条通道**：
+任何失败都直接返回错误、由页面明确提示，**不再回退端上 MODNet 抠图**
+（降级会给出一致的成片问题，且会绕过内容安全检测；端上推理仅留作开发者自检）。
 
 环境变量（不配置 = 功能关闭，不影响其他接口）：
 

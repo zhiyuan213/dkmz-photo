@@ -88,19 +88,20 @@ public class PhotoSegmentController {
 
         // ---- 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
         // fail-closed：检测通道异常 / 结果超时未回 → 拒绝处理，绝不放过风险图。
+        // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填），不用可能为空的请求头。
         boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image), openid);
+                secCheck.checkOrThrow(decodeImage(image), user);
                 secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
-                log.warn("segment 拦截违规图片 user={} suggest={}", userTag(openid), e.getSuggest());
+                log.warn("segment 拦截违规图片 user={} suggest={}", userTag(user), e.getSuggest());
                 out.put("ok", false);
                 out.put("code", "RISKY_CONTENT");
                 out.put("msg", "图片内容涉嫌违规，请更换照片后重试");
                 return out;
             } catch (Exception e) {
-                log.warn("segment 内容检测不可用 user={}: {}", userTag(openid), e.toString());
+                log.warn("segment 内容检测不可用 user={}: {}", userTag(user), e.toString());
                 out.put("ok", false);
                 out.put("code", "SEC_CHECK_UNAVAILABLE");
                 out.put("msg", "内容安全检测暂不可用，请稍后重试");

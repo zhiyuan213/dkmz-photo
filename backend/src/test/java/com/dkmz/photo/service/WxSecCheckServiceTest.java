@@ -162,7 +162,80 @@ class WxSecCheckServiceTest {
         WxSecCheckService.Media m = s.media(token);
         assertNotNull(m);
         assertArrayEquals(IMG, m.bytes);
+        // 带扩展名的形态（微信实际来拉的地址）也要能命中
+        assertNotNull(s.media(token + ".jpg"));
         assertNull(s.media("not-a-token"));
+    }
+
+    /** media_url 必须带图片扩展名（微信下载器对无扩展名地址处置不一） */
+    @Test
+    void mediaUrlCarriesImageExtension() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 500);
+        stubSubmit(s);
+        s.submit(IMG, "u1");
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(s).postJson(body.capture(), anyString(), anyBoolean());
+        assertTrue(body.getValue().matches(".*/api/photo/sec-check/media/[0-9a-f]{32}\\.jpg.*"),
+                body.getValue());
+    }
+
+    /**
+     * 提交体必须是官方 v2 语义：media_type=2 表示图片（v1 相反，曾按老文档写成 1），
+     * 且 openid 必填。
+     */
+    @Test
+    void submitBodyUsesV2Semantics() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 500);
+        stubSubmit(s);
+        s.submit(IMG, "oUser123");
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(s).postJson(body.capture(), anyString(), anyBoolean());
+        String json = body.getValue();
+        assertTrue(json.contains("\"media_type\":2"), json);
+        assertTrue(json.contains("\"version\":2"), json);
+        assertTrue(json.contains("\"scene\":1"), json);
+        assertTrue(json.contains("\"openid\":\"oUser123\""), json);
+    }
+
+    /** openid 必填：缺了要提前报清楚，而不是让微信回一个难懂的 40003 */
+    @Test
+    void missingOpenidIsRejectedBeforeSubmit() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 500);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> s.submit(IMG, null));
+        assertTrue(e.getMessage().contains("openid"), e.getMessage());
+        IllegalStateException e2 = assertThrows(IllegalStateException.class, () -> s.submit(IMG, "  "));
+        assertTrue(e2.getMessage().contains("openid"), e2.getMessage());
+        verify(s, never()).postJson(anyString(), anyString(), anyBoolean());
+    }
+
+    /** 官方 JSON 形态推送：综合结果在 result 里（detail 可能没有） */
+    @Test
+    void jsonPushWithResultObjectIsParsed() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("errcode", 0);
+        ObjectNode result = node.putObject("result");
+        result.put("suggest", "risky");
+        result.put("label", 20002);
+        pushNodeAsync(s, node, 100);
+        WxSecCheckService.RiskyContentException e =
+                assertThrows(WxSecCheckService.RiskyContentException.class, () -> s.checkOrThrow(IMG, "u1"));
+        assertEquals("risky", e.getSuggest());
+    }
+
+    /** -1008（微信拉不到 media_url）时，错误提示要直接指向公网地址问题 */
+    @Test
+    void downloadErrorCodeGetsActionableHint() throws Exception {
+        WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
+        stubSubmit(s);
+        ObjectNode node = new ObjectMapper().createObjectNode();
+        node.put("trace_id", TRACE);
+        node.put("errcode", -1008);
+        pushNodeAsync(s, node, 100);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> s.checkOrThrow(IMG, "u1"));
+        assertTrue(e.getMessage().contains("XPHOTO_PUBLIC_BASE_URL"), e.getMessage());
     }
 
     @Test
@@ -179,7 +252,7 @@ class WxSecCheckServiceTest {
         WxSecCheckService s = service(true, mock(TokenManager.class), 3000);
         stubSubmit(s);
         pushAsync(s, TRACE, "pass", 100);
-        Map<String, Object> d = s.diagnose(IMG);
+        Map<String, Object> d = s.diagnose(IMG, "oUser");
         assertEquals(Boolean.TRUE, d.get("ok"));
         assertEquals(TRACE, d.get("traceId"));
         assertEquals("pass", d.get("suggest"));
@@ -268,7 +341,7 @@ class WxSecCheckServiceTest {
         node.put("errcode", 40004);
         node.put("errmsg", "media download fail");
         pushNodeAsync(s, node, 100);
-        Map<String, Object> d = s.diagnose(IMG);
+        Map<String, Object> d = s.diagnose(IMG, "oUser");
         assertEquals(Boolean.FALSE, d.get("ok"));
         assertEquals(Boolean.TRUE, d.get("received"));
         assertEquals(40004, d.get("errcode"));

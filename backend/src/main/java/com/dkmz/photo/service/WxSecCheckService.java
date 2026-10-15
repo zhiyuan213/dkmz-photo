@@ -210,19 +210,24 @@ public class WxSecCheckService {
             throw new IllegalStateException(
                     "未配置 XPHOTO_PUBLIC_BASE_URL —— mediaCheckAsync 要求图片公网可访问，微信无法回拉");
         }
+        // openid 是 mediaCheckAsync 的**必填**参数（官方文档：用户需在近两小时访问过小程序），
+        // 缺了会固定报 40003/61010。这里提前拦掉，避免用户看到难懂的上游错误码。
+        if (openid == null || openid.isBlank()) {
+            throw new IllegalStateException(
+                    "缺少 openid：微信内容安全检测要求 openid 必填（且该用户近两小时访问过小程序）");
+        }
         purgeExpired();
         String token = randomToken();
         medias.put(token, new Media(image, guessContentType(image), System.currentTimeMillis() + MEDIA_TTL_MS));
-        String mediaUrl = trimSlash(publicBaseUrl) + "/api/photo/sec-check/media/" + token;
+        String mediaUrl = trimSlash(publicBaseUrl) + "/api/photo/sec-check/media/" + token + ".jpg";
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("media_url", mediaUrl);
-        body.put("media_type", 1);   // 1 = 图片
+        // ⚠️ v2 接口的 media_type：1 = 音频，2 = 图片（v1 相反，别按老文档写成 1）
+        body.put("media_type", 2);
         body.put("version", 2);
         body.put("scene", 1);        // 1 = 资料（证件照属资料图片）
-        if (openid != null && !openid.isBlank()) {
-            body.put("openid", openid);
-        }
+        body.put("openid", openid);
         String json;
         try {
             json = om.writeValueAsString(body);
@@ -296,14 +301,21 @@ public class WxSecCheckService {
         int errcode = node.path("errcode").asInt(0);
         String errmsg = node.path("errmsg").asText("");
 
-        // suggest/label：顶层拿不到就去 detail 里找。
-        // ⚠️ 微信 XML 推送里 suggest 是在 <detail> 内的：
-        //   <detail><strategy/><errcode/><suggest/><label/><prob/></detail>
-        // PushSignUtil 会把 detail 转成**嵌套对象**（不是字符串），因此必须按对象解析，
-        // 用 asText() 取会得到空串、导致每次检测都白等到超时。
+        // suggest/label：官方文档里权威的「综合结果」在 result 里；顶层也可能带；
+        // 都会缺的话再退到 detail（数组，逐策略结果）。
+        // ⚠️ 微信 XML 推送里 detail 是 <detail><strategy/><errcode/><suggest/>…</detail>，
+        // PushSignUtil 会把它转成**嵌套对象/对象数组**（不是字符串），
+        // 用 asText() 取会得到空串、导致每次检测都白等到超时——必须按节点类型解析。
         String suggest = node.path("suggest").asText("");
         String label = node.path("label").asText("");
         int detailErrcode = 0;
+        JsonNode result = node.path("result");
+        if ((suggest.isEmpty() || label.isEmpty()) && result.isObject()) {
+            if (suggest.isEmpty()) suggest = result.path("suggest").asText("");
+            if (label.isEmpty() && !result.path("label").isMissingNode() && !result.path("label").isNull()) {
+                label = result.path("label").asText("");
+            }
+        }
         JsonNode detail = node.path("detail");
         if (detail.isTextual() && !detail.asText().isEmpty()) {
             try {
@@ -327,6 +339,11 @@ public class WxSecCheckService {
         if (failCode == 0 && suggest.isEmpty() && detailErrcode != 0) {
             failCode = detailErrcode;
             failMsg = "detail.errcode=" + detailErrcode + "（检测策略执行失败，微信未能取到待检图或内部错误）";
+        }
+        // errcode → 可操作的提示（必须在写入 Pending 之前拼好，否则 p.errmsg 会漏掉提示）
+        if (failCode == -1008) {
+            failMsg = failMsg + "（-1008 = 微信下载 media_url 失败：检查 XPHOTO_PUBLIC_BASE_URL 是否公网可访问、"
+                    + "是否有鉴权/防火墙拦截，以及待检图是否已过 10 分钟有效期）";
         }
 
         Pending p = pendings.get(traceId);
@@ -360,6 +377,12 @@ public class WxSecCheckService {
         if (token == null || token.isEmpty()) {
             return null;
         }
+        // 取图地址刻意带 .jpg 后缀（微信下载器对无扩展名地址处置不一），
+        // 这里统一剥掉后缀再查，两种形态都能命中。
+        int dot = token.indexOf('.');
+        if (dot > 0) {
+            token = token.substring(0, dot);
+        }
         Media m = medias.get(token);
         if (m == null) {
             return null;
@@ -371,20 +394,24 @@ public class WxSecCheckService {
         return m;
     }
 
-    /** 运维自检：提交一张图并等结果，返回通道与结果明细（不抛异常） */
-    public Map<String, Object> diagnose(byte[] image) {
+    /**
+     * 运维自检：提交一张图并等结果，返回通道与结果明细（不抛异常）。
+     * @param openid 必填 —— 微信要求 openid 必填且该用户近两小时访问过小程序
+     */
+    public Map<String, Object> diagnose(byte[] image, String openid) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("enabled", enabled);
         out.put("cloudCall", cloudCall);
         out.put("publicBaseUrl", publicBaseUrl == null || publicBaseUrl.isBlank() ? "(未配置)" : publicBaseUrl);
         out.put("waitMs", waitMs);
+        out.put("openid", openid == null || openid.isBlank() ? "(未提供)" : openid);
         if (!enabled) {
             out.put("ok", false);
             out.put("msg", "SEC_CHECK_ENABLED=false，检测已被关闭（生产不允许）");
             return out;
         }
         try {
-            Submit s = submit(image, null);
+            Submit s = submit(image, openid);
             out.put("traceId", s.traceId);
             out.put("mediaUrl", s.mediaUrl);
             out.put("submitted", true);

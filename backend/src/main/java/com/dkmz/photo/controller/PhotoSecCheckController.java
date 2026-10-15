@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,9 +29,11 @@ import java.util.Map;
  *   （security.mediaCheckAsync 的 media_url 必须公网可访问）。
  *   token 为 128 位随机串、10 分钟过期，且不落盘、不入对象存储，请求时即取即弃。
  *
- * GET /api/photo/sec-check/selftest?token=<PHOTO_JOB_TOKEN> —— 运维自检（需口令）
+ * GET /api/photo/sec-check/selftest?token=<PHOTO_JOB_TOKEN>&openid=<真实openid> —— 运维自检（需口令）
  *   现造一张纯白小图跑一遍「提交异步检测 → 等微信推送结果」全链路，
  *   **不必再上真机拍照片**看结果页明细。返回 traceId / suggest / 各通道状态。
+ *   ⚠️ openid 必填（微信要求，且该用户近两小时访问过小程序）；也可由云托管注入的
+ *   X-WX-OPENID 头自动带入。真实 openid 可从云托管日志里 `下单结果 openid=oXXXX` 那行取。
  */
 @RestController
 @RequestMapping("/api/photo/sec-check")
@@ -61,17 +64,27 @@ public class PhotoSecCheckController {
     }
 
     @GetMapping("/selftest")
-    public Map<String, Object> selftest(@RequestParam(required = false) String token) {
+    public Map<String, Object> selftest(@RequestParam(required = false) String token,
+                                        @RequestParam(required = false) String openid,
+                                        @RequestHeader(value = "X-WX-OPENID", required = false) String cloudOpenid) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (jobToken == null || jobToken.isEmpty() || !jobToken.equals(token)) {
             out.put("ok", false);
             out.put("msg", "token 无效");
             return out;
         }
+        // 云托管 callContainer 会自动注入 X-WX-OPENID；命令行自检则显式传 ?openid=
+        String who = openid != null && !openid.isBlank() ? openid : cloudOpenid;
+        if (who == null || who.isBlank()) {
+            out.put("ok", false);
+            out.put("msg", "缺少 openid：请加 &openid=<真实openid>（微信侧必填，且该用户近两小时访问过小程序）；"
+                    + "真实 openid 可从云托管日志的 `下单结果 openid=oXXXX` 一行取得");
+            return out;
+        }
         try {
             byte[] sample = whitePng(256, 256);
             out.put("sampleBytes", sample.length);
-            Map<String, Object> result = secCheck.diagnose(sample);
+            Map<String, Object> result = secCheck.diagnose(sample, who);
             out.putAll(result);
             log.info("sec-check selftest ok={} suggest={} traceId={}",
                     result.get("ok"), result.get("suggest"), result.get("traceId"));

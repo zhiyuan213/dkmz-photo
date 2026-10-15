@@ -74,9 +74,10 @@ public class IdPhotoController {
         }
 
         // ---- 内容安全检测（UGC 合规，与 /api/photo/segment 同策略：fail-closed）----
+        // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填）
         if (secCheck.isEnabled()) {
             try {
-                secCheck.checkOrThrow(decodeImage(image), null);
+                secCheck.checkOrThrow(decodeImage(image), user);
             } catch (WxSecCheckService.RiskyContentException e) {
                 log.warn("idphoto/process 拦截违规图片 user={} suggest={}", user, e.getSuggest());
                 out.put("code", "RISKY_CONTENT");

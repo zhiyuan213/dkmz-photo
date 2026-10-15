@@ -284,6 +284,12 @@ public class PhotoPayController {
         // 图片内容安全检测结果推送（security.mediaCheckAsync）
         if ("wxa_media_check".equals(event)) {
             boolean matched = secCheck.acceptPush(node);
+            if (!sigVerified) {
+                // 支付推送还能靠「回查订单」保真，检测推送没有这层兜底；
+                // 未带签名不影响本次判定（trace_id 只存在服务端内存），但要留痕便于排查 Token 不一致
+                log.warn("内容安全检测推送未带有效签名 —— 建议把 mp 后台「消息推送」的 Token 配成与"
+                        + "云托管环境变量 XPHOTO_PUSH_TOKEN 一致的值");
+            }
             log.info("内容安全检测推送 trace_id={} 命中等待中的提交={}",
                     node.path("trace_id").asText(""), matched);
             // 即使没匹配到（超时已清理）也要确认成功，否则微信会重推 15 次
