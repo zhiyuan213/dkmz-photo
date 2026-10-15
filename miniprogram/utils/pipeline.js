@@ -834,8 +834,21 @@ function maskFromGrayPng(pngPath) {
  * 超出 90KB base64 时先尝试 95/90/85% 质量，再逐档减小尺寸。
  * 云端处理后才缩到最终报名规格，避免在小图上直接分割与磨皮。
  */
-const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85];
-const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量）
+// 质量档要多留几级：裁剪图上限从 90KB 压到 64KB（要给送检原图腾预算），
+// 最末尺寸档（640 长边）在 0.85 质量下仍可能超限，必须能继续降质量而不是直接失败。
+const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.75, 0.65];
+
+// ⚠️ CallContainer 对**文本**请求体有 100KiB 硬上限。官方《微信云托管开发常识》原文：
+//    「CallContainer 请求大小限制 100K，请求中不建议包含图片，可通过对象存储处理。」
+//    《调用云托管服务》亦写明「请求大小限制 100KiB（文本 100KiB，二进制 20MiB）」。
+// 我们一次请求要装**两张** base64（裁剪工作图 + 检测用完整原图），所以必须自己把
+// 总量压在 100KiB 之下；一旦超出，请求在链路层就被拒（前端只看到
+// `cloud.callContainer:fail -600001`，**后端根本收不到请求**，日志里什么也没有）——
+// 2026-10-15 就是因为送检原图未计体积预算而踩这个坑。
+const CLOUD_BODY_BUDGET = 95 * 1024;    // 整个 body（含 JSON 外壳）的目标上限
+const CLOUD_BODY_RESERVE = 512;         // 预留给 JSON 外壳 / loginCode / boomId 等字段
+/** 裁剪工作图 base64 上限（送腾讯云 BDA 抠图，直接影响出片质量，优先保它） */
+const CLOUD_PAYLOAD_LIMIT = 64 * 1024;
 
 // -------------------------------------- 内容安全检测送检图（完整原图）
 
@@ -849,10 +862,14 @@ const CLOUD_PAYLOAD_LIMIT = 90 * 1024; // base64 字节上限（100KB 留余量�
  * 尺寸/质量可以降（控制体积），但**覆盖范围不能降**：宁可用小一号的整幅图，
  * 也绝不能用大一号的裁剪图。
  */
-const CHECK_SIZE_LADDER = [1024, 768];
-const CHECK_QUALITY_LADDER = [0.72, 0.58, 0.45];
-/** 送检图 base64 字节上限（与裁剪工作图合计仍远低于接口体积限制） */
-const CHECK_PAYLOAD_LIMIT = 260 * 1024;
+const CHECK_SIZE_LADDER = [1024, 768, 640];
+const CHECK_QUALITY_LADDER = [0.72, 0.58, 0.45, 0.35];
+/**
+ * 送检图 base64 上限 —— 它必须与裁剪工作图**合计**留在 CallContainer 的
+ * 100KiB 文本限制内，所以这个值不是独立的：cloudMatting 会按「总预算 − 裁剪图」
+ * 动态算出一个更小的上限传进来（见其 `checkLimit`）。
+ */
+const CHECK_PAYLOAD_LIMIT = 28 * 1024;
 
 /** 整幅原图等比缩放到 w×h（不裁剪、不留白）后返回画布 */
 function wholeImageCanvas(imgPath, w, h) {
@@ -875,8 +892,12 @@ function wholeImageCanvas(imgPath, w, h) {
  * 尺寸/质量逐档下探直到落入体积上限；换尺寸才重建画布，同一画布上换质量只重编码。
  * 失败直接上抛：送检是这个链路的必要环节，生成不了送检图就不能继续
  *（与后端 fail-closed 同一语义），绝不静默退回「送裁剪图」。
+ *
+ * @param {number} [limit] 本次的体积上限（字节）。**不能省**——送检图与裁剪工作图
+ *   共用同一个请求体，上限由 cloudMatting 按「100KiB − 裁剪图」动态算出后传入。
  */
-function checkImageBase64(imgPath) {
+function checkImageBase64(imgPath, limit) {
+  const cap = limit > 0 ? limit : CHECK_PAYLOAD_LIMIT;
   return matting.imageSize(imgPath).then(({ width, height }) => {
     const build = (sizeIndex) => {
       const scale = Math.min(1, CHECK_SIZE_LADDER[sizeIndex] / Math.max(width, height));
@@ -900,10 +921,13 @@ function checkImageBase64(imgPath) {
           )
         )
         .then((b64) => {
-          if (b64.length <= CHECK_PAYLOAD_LIMIT) return b64;
+          if (b64.length <= cap) return b64;
           if (qualityIndex + 1 < CHECK_QUALITY_LADDER.length) return attempt(sizeIndex, qualityIndex + 1);
           if (sizeIndex + 1 < CHECK_SIZE_LADDER.length) return attempt(sizeIndex + 1, 0);
-          return b64;   // 最小档仍超限：保覆盖优先于保体积
+          // 最小档（640 长边 / 质量 0.35）仍超限：返回它并交由上层断言拦下——
+          // 绝不能"保体积"到把整张图丢掉，也不能"保体积"到让请求超限失败
+          //（超限 = callContainer -600001，后端收不到任何请求）。
+          return b64;
         });
     return attempt(0, 0);
   });
@@ -960,12 +984,24 @@ function cloudMatting(req, cloudSegment) {
   return shoot(0, 0)
     .then((prepared) => {
       upload = prepared;
-      return checkImageBase64(imgPath).then((checkImage) => {
+      // CallContainer 的 100KiB 文本上限是**两张图共享**的：裁剪工作图先定（它决定
+      // 出片质量，优先保），剩余预算才给送检原图 —— 不是各自一个固定上限。
+      const checkLimit = Math.max(
+        8 * 1024,
+        Math.min(CHECK_PAYLOAD_LIMIT, CLOUD_BODY_BUDGET - CLOUD_BODY_RESERVE - prepared.b64.length)
+      );
+      return checkImageBase64(imgPath, checkLimit).then((checkImage) => {
         const extra = alphaOnly
           ? { alphaOnly: true }
           : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
         // 后端拿它去送微信检测；没有它后端只能退检裁剪图，裁剪框外的违规内容会漏检
         extra.checkImage = checkImage;
+        // 体积必须可见：callContainer 超限只回一个 -600001，后端与容器日志里毫无痕迹，
+        // 所以把三个值打进真机 console —— 下次一眼就能判断是不是又撞了 100KiB。
+        const kb = (n) => Math.round(n / 1024);
+        console.log('[photo][pipeline] 上传体积 裁剪图=' + kb(prepared.b64.length) + 'KB 送检图='
+          + kb(checkImage.length) + 'KB 合计=' + kb(prepared.b64.length + checkImage.length)
+          + 'KB（CallContainer 文本上限 100KB，本地预算 ' + kb(CLOUD_BODY_BUDGET) + 'KB）');
         return cloudSegment(prepared.b64, extra);
       });
     })

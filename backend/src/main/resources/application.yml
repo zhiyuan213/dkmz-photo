@@ -92,8 +92,11 @@ photo:
   # ------------------------------------------------------------
   sec-check:
     enabled: ${SEC_CHECK_ENABLED:true}
-    # 等微信推送结果的最长时间（毫秒），超时按不可用处理（fail-closed）
-    wait-ms: ${SEC_CHECK_WAIT_MS:10000}
+    # 等微信推送结果的最长时间（毫秒），超时按不可用处理（fail-closed）。
+    # ⚠️ 不要调大：端上走 CallContainer，其超时**硬上限 15s**（官方《云托管开发常识》），
+    # 本值 + BDA 处理 + 网络往返必须留在 15s 内，否则用户看到的是超时失败而不是检测结果。
+    # 实测正常 0.5~1s 就推回，6s 已是 6 倍余量。
+    wait-ms: ${SEC_CHECK_WAIT_MS:6000}
     # 本服务公网基址，如 https://dkmz-backend-xxx.sh.run.tcloudbase.com（末尾不要带 /）
     public-base-url: ${XPHOTO_PUBLIC_BASE_URL:}
   # ------------------------------------------------------------

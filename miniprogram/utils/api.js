@@ -24,6 +24,19 @@ const USE_MOCK = false;
 const TIMEOUT = 12000;
 
 /**
+ * 云托管 CallContainer 的两条硬限制（官方《微信云托管开发常识》，2026-10-15 踩坑后补）：
+ *   ① **超时不得超过 15s**：「小程序/公众号中 CallContainer 超时时间不得超过 15 s」
+ *      → 传更大的值无效，别再用 25s/35s 这种数。
+ *   ② **文本请求体上限 100KiB**：「CallContainer 请求大小限制 100K，请求中不建议包含图片」
+ *      → 带图片的接口必须自己算体积预算（见 utils/pipeline.js 的 CLOUD_BODY_BUDGET）。
+ *      超限时前端只看到 `cloud.callContainer:fail -600001`，**后端完全收不到请求**，
+ *      容器日志里也没有任何记录 —— 排查时先怀疑体积，再怀疑服务。
+ */
+const CLOUD_SEGMENT_TIMEOUT = 14500;   // 抠图接口：15s 上限内留 0.5s 余量
+/** 与 pipeline.js 的 CLOUD_BODY_BUDGET 一致：整个 JSON body 的本地守门阈值 */
+const CALL_BODY_LIMIT = 95 * 1024;
+
+/**
  * 云托管初始化（懒初始化，只做一次）。
  * 放在真正发起调用前执行，不依赖 app.js 的加载时序 —— 与 exam-countdown 已跑通的写法一致。
  */
@@ -82,7 +95,15 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
         },
         fail: (err) => {
           console.warn('[photo][api] callContainer 失败', path, err);
-          reject({ code: 'CONTAINER_FAIL', msg: (err && err.errMsg) || '云托管调用失败', raw: err });
+          const raw = (err && err.errMsg) || '云托管调用失败';
+          // -600001 是链路层拒绝，最常见的两个原因：
+          //   ① 请求体超 100KiB 文本上限（带图片的接口最容易踩）
+          //   ② 服务正在重启 / 冷启动（刚部署完最典型）
+          // 后端日志里查不到任何记录时，基本就是这两条之一。
+          const extra = /-600001/.test(raw)
+            ? '（云托管通道拒绝：请求体超 100KB 或服务正在重启，请稍后重试）'
+            : '';
+          reject({ code: 'CONTAINER_FAIL', msg: raw + extra, raw: err });
         },
       });
       return;
@@ -212,7 +233,9 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
     body.bgHex = extra.bgHex;
     body.outTop = extra.outTop || 0;
   }
-  // 抠图(+美肤需要两次 BDA 调用，再加换底合成)+大图上传比普通接口慢，放宽到 25s
+  // 抠图（美肤时两次 BDA 调用 + 换底合成）比普通接口慢，但 CallContainer 超时
+  // **不得超过 15s**（官方硬限制，传更大的值无效）—— 所以这里取 14.5s，
+  // 后端的内容安全检测等待也随之收紧（SEC_CHECK_WAIT_MS 默认 6000）。
   return new Promise((resolve, reject) => {
     wx.login({
       success: (res) => res && res.code ? resolve(res.code) : reject({ msg: '获取登录凭证失败，请重试' }),
@@ -220,7 +243,17 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
     });
   }).then((code) => {
     body.loginCode = code;
-    return call('/api/photo/segment', 'POST', body, 35000);
+    // 本地守门：CallContainer 的文本体上限 100KiB，超限只会回一个含义模糊的
+    // `-600001`（后端收不到请求、日志无迹）。这里先算准数并给出可读错误。
+    const bytes = JSON.stringify(body).length;   // base64 全为 ASCII，字符数 ≈ 字节数
+    if (bytes > CALL_BODY_LIMIT) {
+      return Promise.reject({
+        code: 'PAYLOAD_TOO_LARGE',
+        msg: '照片数据过大（' + Math.round(bytes / 1024) + 'KB / 上限 '
+          + Math.round(CALL_BODY_LIMIT / 1024) + 'KB），请换一张照片重试',
+      });
+    }
+    return call('/api/photo/segment', 'POST', body, CLOUD_SEGMENT_TIMEOUT);
   });
 }
 
