@@ -870,7 +870,8 @@ function maskFromGrayPng(pngPath) {
 }
 
 /** 工作图优先长边 960；先调整 JPEG 质量，再逐档降低尺寸。 */
-const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.75, 0.65, 0.55];
+// 优先保留纹理；预算不足时降低工作图尺寸，避免大图被压成明显的色块。
+const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.8];
 
 // ⚠️ CallContainer 对**文本**请求体有 100KiB 硬上限。官方《微信云托管开发常识》原文：
 //    「CallContainer 请求大小限制 100K，请求中不建议包含图片，可通过对象存储处理。」

@@ -1,4 +1,4 @@
-/** 抠图/美肤先使用较大的工作图，最终导出才缩到报名规格。 */
+/** 高清工作图按原图可用细节逐档选择，不为凑像素放大原图。 */
 function cloudProcessingSizes(box, outW, outH) {
   const sourceScale = Math.max(1, Math.min(box.width / outW, box.height / outH));
   const sizes = [];

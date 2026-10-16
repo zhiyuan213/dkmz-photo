@@ -13,6 +13,25 @@ import java.util.Base64;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PhotoQualityTest {
+    @Test
+    void naturalTonePreservesChromaTransparencyAndTexture() {
+        int[] rgb = {0xFFFFFF, 0x000000, 0x505050, 0xB49678, 0xB6987A, 0x123456};
+        int[] before = rgb.clone();
+        float[] alpha = {1, 1, 1, 1, 1, 0};
+        PortraitCompositeService.enhanceNaturalTone(alpha, rgb);
+        assertEquals(before[0], rgb[0]);
+        assertEquals(before[1], rgb[1]);
+        assertEquals(before[5], rgb[5]);
+        assertTrue((rgb[2] & 255) < 80, "暗部不能被抬灰");
+        for (int i = 2; i <= 4; i++) {
+            int dr = ((rgb[i] >> 16) & 255) - ((before[i] >> 16) & 255);
+            assertEquals(dr, ((rgb[i] >> 8) & 255) - ((before[i] >> 8) & 255));
+            assertEquals(dr, (rgb[i] & 255) - (before[i] & 255));
+            assertTrue(Math.abs(dr) <= 3);
+        }
+        assertTrue((rgb[4] & 255) > (rgb[3] & 255), "局部纹理必须保留");
+    }
+
     private static class HairFixture {
         final float[] alpha = new float[4096];
         final int[] rgb = new int[4096];

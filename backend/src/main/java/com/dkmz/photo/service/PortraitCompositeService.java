@@ -26,7 +26,7 @@ public class PortraitCompositeService {
 
     private static final Logger log = LoggerFactory.getLogger(PortraitCompositeService.class);
 
-    /** 成品图 JPEG 质量：端上还会按规格体积二次导出，这里给足画质余量 */
+    /** 成品图 JPEG 质量：端上保留处理尺寸导出，这里给足画质余量 */
     private static final float JPEG_QUALITY = 0.95f;
 
     /**
@@ -65,8 +65,7 @@ public class PortraitCompositeService {
         // 只有原图之外的补白行可以确定为背景；不按亮度猜测人体透明度。
         int top = Math.max(0, Math.min(h, outTopRows));
         java.util.Arrays.fill(alpha, 0, top * w, 0f);
-        if ((bg[0] + bg[1] + bg[2]) / 3.0 < 200
-                && originalBase64 != null && !originalBase64.isBlank()) {
+        if (originalBase64 != null && !originalBase64.isBlank()) {
             BufferedImage original = decode(originalBase64);
             // 不猜测不同尺寸的坐标映射，尺寸不匹配时保留原结果。
             if (original.getWidth() == w && original.getHeight() == h) {
@@ -74,6 +73,7 @@ public class PortraitCompositeService {
                         original.getRGB(0, 0, w, h, null, 0, w), top);
             }
         }
+        enhanceNaturalTone(alpha, rgb);
         int[] dst = new int[n];
         for (int i = 0; i < n; i++) {
             float a = alpha[i];
@@ -102,6 +102,22 @@ public class PortraitCompositeService {
         String jpeg = encodeJpeg(out, JPEG_QUALITY);
         log.info("成品合成 ok {}x{} 输出 {}KB", w, h, jpeg.length() / 1024);
         return jpeg;
+    }
+
+    /** 轻微 S 曲线增强层次。只改前景亮度，不磨皮、不改变色度或轮廓。 */
+    static void enhanceNaturalTone(float[] alpha, int[] rgb) {
+        for (int i = 0; i < rgb.length; i++) {
+            if (alpha[i] <= 0f) continue;
+            int c = rgb[i];
+            int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+            double y = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+            // 黑白端点不变，最大调整约 3 级；避免把暗色头发和衣服抬成灰色。
+            double delta = 32 * y * (1 - y) * (2 * y - 1);
+            delta = Math.max(-Math.min(r, Math.min(g, b)),
+                    Math.min(255 - Math.max(r, Math.max(g, b)), delta));
+            int d = (int) Math.round(delta);
+            rgb[i] = ((r + d) << 16) | ((g + d) << 8) | (b + d);
+        }
     }
 
     /** 只净化头顶软边缘的 RGB；不削 alpha、不改实心发丝和五官。 */
