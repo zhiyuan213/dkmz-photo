@@ -1,9 +1,16 @@
-/* 制作页：底色选择 + 处理方式 + 拍摄要求 + 底部固定主操作
+/* 制作页：底色选择 + 处理方式 + 拍摄要求 + 就近主操作
  * 字号/按钮/卡片均来自 app.wxss 全局规范 */
 
-/* 给底部固定操作栏留出空间 */
 .page {
-  padding-bottom: calc(116rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(28rpx + env(safe-area-inset-bottom));
+}
+
+.make-action {
+  margin: 4rpx 0 12rpx;
+}
+
+.make-action .btn {
+  margin: 0;
 }
 
 /* 规格参数保持短值右对齐；来源说明独占一行，避免括号被挤到下一行。 */

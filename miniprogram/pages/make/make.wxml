@@ -68,6 +68,13 @@
     </view>
   </view>
 
+  <!-- 主操作紧跟拍摄要求，首屏即可看到和点击 -->
+  <view class="make-action">
+    <button class="btn primary" bindtap="onPickPhoto" disabled="{{busy}}" hover-class="btn-pressed">
+      {{busy ? '制作中…' : srcPath ? '重新选照片' : '拍照 / 从相册选照片'}}
+    </button>
+  </view>
+
   <!-- 制作进度（仅在制作中展示） -->
   <view class="card" wx:if="{{busy}}">
     <view class="card-title">制作中…</view>
@@ -75,13 +82,6 @@
       <text class="dot {{item.state}}"></text>
       <text class="step-label {{item.state}}">{{item.label}}</text>
     </view>
-  </view>
-
-  <!-- 底部固定主操作：不用滚到最底就能拍照 -->
-  <view class="action-bar">
-    <button class="btn primary" bindtap="onPickPhoto" disabled="{{busy}}" hover-class="btn-pressed">
-      {{busy ? '制作中…' : srcPath ? '重新选照片' : '拍照 / 从相册选照片'}}
-    </button>
   </view>
 
   <!-- 内嵌相机层：默认前置摄像头，可翻转 -->
