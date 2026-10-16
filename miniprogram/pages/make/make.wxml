@@ -1,25 +1,21 @@
 <view class="page" wx:if="{{size}}">
 
-  <!-- 已选尺寸确认（只留用户真正会看的三项） -->
+  <!-- 尺寸只用于构图比例；成片保持高清，不按平台像素/体积二次压缩。 -->
   <view class="card">
     <view class="card-title">{{size.name}}</view>
     <view class="kv">
-      <text>输出像素</text>
-      <text class="v spec-value">{{size.px[0]}} × {{size.px[1]}} px</text>
+      <text>导出方式</text>
+      <text class="v spec-value">按比例高清保存</text>
     </view>
     <view class="kv" wx:if="{{size.mm}}">
-      <text>打印尺寸</text>
+      <text>构图参考</text>
       <text class="v spec-value">{{size.mm[0]}} × {{size.mm[1]}} mm</text>
     </view>
     <view class="kv">
-      <text>体积要求</text>
-      <text class="v spec-value">{{sizeLimit}}</text>
-    </view>
-    <view class="spec-note" wx:if="{{sizeRequirementNote}}">{{sizeRequirementNote}}</view>
-    <view class="kv">
-      <text>适用场景</text>
+      <text>构图用途</text>
       <text class="v">{{sizeUsage}}</text>
     </view>
+    <view class="hint">报名上传前，请核对报考平台的像素和体积要求。</view>
   </view>
 
   <!-- 底色 -->
@@ -43,7 +39,7 @@
     </view>
   </view>
 
-  <!-- 处理方式：只有云端精修一条通道（腾讯云人像分割 + 面部轻度提亮），端上不再出片 -->
+  <!-- 处理方式：云端人像分割 + 换底，端上不再出片 -->
   <view class="card">
     <view class="card-title">处理方式</view>
     <view class="kv">
@@ -51,7 +47,7 @@
       <text class="{{cloudAvailable ? 'ok' : 'bad'}}">{{cloudAvailable ? '已连接' : '未连接'}}</text>
     </view>
     <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：请检查网络后重试。</view>
-    <view class="hint" wx:else>照片将上传腾讯云做人像分割、面部轻度提亮，并按所选底色合成后回传，仅用于生成结果。</view>
+    <view class="hint" wx:else>照片将上传腾讯云做人像分割，并按所选底色合成后回传，仅用于生成结果。</view>
   </view>
 
   <!-- 拍摄要求：默认折叠，需要时展开（避免把主操作挤出首屏） -->
@@ -63,7 +59,6 @@
     <view class="hint" wx:if="{{!showNotes}}">半身照、正面、露双耳额头；点「展开」看完整要求。</view>
     <view class="soft-block" wx:if="{{showNotes}}">
       <view class="note" wx:for="{{shootNotes}}" wx:key="*this">· {{item}}</view>
-      <view class="note" wx:if="{{size.sizeNote}}">· {{size.sizeNote}}</view>
       <view class="note">· 建议离镜头 0.5~1 米：人脸太近会导致裁剪过满、头顶留白不足。</view>
     </view>
   </view>

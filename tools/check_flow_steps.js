@@ -26,7 +26,7 @@ const ROOT = path.resolve(__dirname, '..');
 const PIPELINE = path.join(ROOT, 'miniprogram/utils/pipeline.js');
 const MAKE = path.join(ROOT, 'miniprogram/pages/make/make.js');
 const EXPECT_KEYS = ['crop', 'seccheck', 'matting', 'compose', 'size'];
-const EXPECT_LABELS = ['人脸检测 · 智能裁剪', '内容安全检测', '云端抠图 · 换底美颜', '换底合成', '按尺寸导出'];
+const EXPECT_LABELS = ['人脸检测 · 智能裁剪', '内容安全检测', '云端抠图 · 换底', '换底合成', '高清导出'];
 
 let failed = 0;
 function check(name, cond, detail) {

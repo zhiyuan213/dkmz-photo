@@ -25,9 +25,6 @@ Page(config.withConfig({
     saving: false,
     saved: false,
     savedPreview: false,
-    savedSpec: false,
-    savedHD: false,
-    hdPx: '',
     reviewMode: config.isReviewMode(),
     /**
      * 权益概览（云端可用时异步拉取）。
@@ -50,33 +47,21 @@ Page(config.withConfig({
     const size = specs.getSize(payload.sizeId) || specs.allSizes()[0];
     const bg = specs.getBackground(payload.bgId);
     const r = payload.result;
-    const spec = size;
-
-    // 规格校验清单（v0.5.0：不再按「考试」判，改按所选尺寸的体积上限判）
-    // 文案保持短句，好让整页在一屏内看完（详细体积说明见首页/制作页）
-    const kbRange = spec.sizeRule === 'range' && spec.minSizeKB
-      ? `${spec.minSizeKB}~${spec.maxSizeKB} KB`
-      : `≤${spec.maxSizeKB} KB`;
+    // 成片只按构图比例高清导出；不宣称满足某个平台的固定像素或体积要求。
     const checks = [];
-    checks.push({ k: '像素尺寸', v: `${r.px[0]}×${r.px[1]}`, ok: true });
-    checks.push({
-      k: '文件体积',
-      v: `${r.kb} KB · 要求 ${kbRange}`,
-      ok: !r.underMin,
-      warn: !!r.underMin,
-    });
+    checks.push({ k: '高清成片', v: `${r.px[0]}×${r.px[1]} · ${r.kb} KB`, ok: true });
     checks.push({ k: '底色 · 格式', v: `${bg.name} · JPG`, ok: true });
     if (!r.faceFound) {
       checks.push({ k: '人脸定位', v: '未检出人脸，已按默认构图裁剪', ok: false });
     }
 
-    // 规格校验整体结论（随导出发给服务端，用于统计哪个尺寸最常被判不合格）
-    this.specOk = checks.every((c) => c.ok);
+    // 仅保留人脸定位状态供服务端统计；不进行固定像素/体积合格判定。
+    this.specOk = !!r.faceFound;
     this._result = r;
 
     this.setData({
       size,
-      sizeUsage: specs.sizeUsage(spec),
+      sizeUsage: specs.sizeUsage(size),
       bgName: bg.name,
       // 展示带水印预览版；高清无水印版在保存校验通过后给出
       // （备案模式不做权益校验，直接展示高清无水印图）
@@ -85,7 +70,6 @@ Page(config.withConfig({
         : r.previewPath || r.path,
       kb: r.kb,
       px: `${r.px[0]}×${r.px[1]}`,
-      hdPx: r.hdPx ? `${r.hdPx[0]}×${r.hdPx[1]}` : '',
       quality: Math.round(r.quality * 100),
       faceFound: r.faceFound,
       metrics: r.metrics,
@@ -145,16 +129,16 @@ Page(config.withConfig({
     if (this.data.saving || this.data.saved) return;
     const r = this._result || {};
     const previewPath = r.previewPath || r.path;
-    const savePreview = () => this.saveToAlbum(previewPath);
-    // 备案模式：不校验权益、不消耗额度，直接保存两种无水印版本。
+    const savePreview = () => this.saveToAlbum(previewPath, true);
+    // 备案模式：不校验权益、不消耗额度，直接保存无水印高清图。
     if (config.isReviewMode()) {
       this._exportUnlocked = true;
-      this.saveVersions();
+      this.saveToAlbum(r.path);
       return;
     }
     // 本页已经完成权益校验后，保存失败重试无需再次请求或消耗额度。
     if (this._exportUnlocked) {
-      this.saveVersions();
+      this.saveToAlbum(r.path);
       return;
     }
     if (!api.isCloudEnabled()) {
@@ -180,9 +164,9 @@ Page(config.withConfig({
             wx.showToast({ title: '会员权益已使用', icon: 'none' });
           }
           this.syncEntitlement(res);
-          // 一次权益解锁同一张照片的报名版与高清留存版。
+          // 一次权益解锁这一张无水印高清照片。
           this._exportUnlocked = true;
-          this.saveVersions();
+          this.saveToAlbum(r.path);
           return;
         }
         this.setData({ saving: false });
@@ -204,53 +188,6 @@ Page(config.withConfig({
         wx.showToast({ title: '网络异常，将保存预览版', icon: 'none' });
         savePreview();
       });
-  },
-
-  /** 先保存符合报名规格的照片，再保存高分辨率留存照；失败可续存未完成的一张。 */
-  saveVersions() {
-    const r = this._result || {};
-    const specPath = r.path;
-    const hdPath = r.cleanPreviewPath;
-    if (!specPath || !hdPath) {
-      wx.showToast({ title: '照片文件已失效，请重新制作', icon: 'none' });
-      this.setData({ saving: false });
-      return;
-    }
-    this.setData({ saving: true });
-    const save = (path) => new Promise((resolve, reject) => {
-      wx.saveImageToPhotosAlbum({ filePath: path, success: resolve, fail: reject });
-    });
-    let chain = Promise.resolve();
-    if (!this.data.savedSpec) {
-      chain = chain.then(() => save(specPath)).then(() => this.setData({ savedSpec: true }));
-    }
-    if (!this.data.savedHD) {
-      chain = chain.then(() => hdPath === specPath ? null : save(hdPath))
-        .then(() => this.setData({ savedHD: true }));
-    }
-    chain.then(() => {
-      this.setData({ saving: false, saved: true });
-      wx.showToast({ title: hdPath === specPath ? '照片已保存' : '两张照片已保存', icon: 'success' });
-    }).catch((e) => {
-      this.setData({ saving: false });
-      const msg = (e && e.errMsg) || '';
-      if (msg.includes('auth')) {
-        wx.showModal({
-          title: '需要相册权限', content: '请在设置中允许保存到相册', confirmText: '去设置',
-          success: (res) => { if (res.confirm) wx.openSetting(); },
-        });
-      } else if (!msg.includes('cancel')) {
-        if (this.data.savedSpec) {
-          wx.showModal({
-            title: '高清版保存失败',
-            content: '报名版已保存。再次点击“继续保存高清版”即可续存，不会重复扣除次数。',
-            showCancel: false,
-          });
-        } else {
-          wx.showToast({ title: '报名版保存失败，请重试', icon: 'none' });
-        }
-      }
-    });
   },
 
   /** 用消耗接口回传的最新权益覆盖界面数字（省一次请求） */
@@ -289,12 +226,17 @@ Page(config.withConfig({
     });
   },
 
-  saveToAlbum(filePath) {
+  saveToAlbum(filePath, previewOnly = false) {
+    if (!filePath) {
+      this.setData({ saving: false });
+      wx.showToast({ title: '照片文件已失效，请重新制作', icon: 'none' });
+      return;
+    }
     this.setData({ saving: true });
     wx.saveImageToPhotosAlbum({
-      filePath: filePath || this.data.src,
+      filePath,
       success: () => {
-        this.setData({ saved: true, savedPreview: true });
+        this.setData({ saved: true, savedPreview: previewOnly });
         wx.showToast({ title: '已保存到相册', icon: 'success' });
       },
       fail: (e) => {

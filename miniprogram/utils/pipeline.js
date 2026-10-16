@@ -2,11 +2,11 @@
  * 证件照制作流水线（阶段 1 · 免费链路）
  *
  * 选照片 → 人脸检测定位 → **本地**构图裁剪 → （完整原图送检）内容安全检测
- *        → 云端抠图 → 换底合成 → 叠加预览水印 → 按「目标体积」二分法调 JPEG 质量导出
+ *        → 云端抠图 → 换底合成 → 叠加预览水印 → 高清导出
  *
  * ⚠️ 顺序说明：端上的「本地构图裁剪」发生在内容安全检测**之前**（只为缩小上传体积，
  *    全程不出手机、不产出任何结果）；但送给微信检测的是**未裁剪的完整原图**，
- *    且腾讯云的抠图/提亮严格发生在检测通过**之后**。详见 checkImageBase64 的注释。
+ *    且腾讯云的抠图严格发生在检测通过**之后**。详见 checkImageBase64 的注释。
  *
  * 依赖：
  *  - utils/face.js   VisionKit 静态图人脸检测 + calcCropBox 构图
@@ -21,8 +21,8 @@
  *  - alpha 灰度图（alphaOnly=true，只替换背景）：云端只回 alpha（10~30KB），
  *    端上用本地裁剪图 + alpha 自己换底 —— 端上像素零损失、不经有损 JPEG，
  *    与「成品图模式」相比少传一份 RGB
- *  - 成品图（res.finished=true，替换背景+美颜）：云端已把「美白后的像素 + 换底 +
- *    边缘净化」一次做完，端上只负责加水印、按规格体积导出 —— 美的像素这才真正进得了成片
+ *  - 成品图（res.finished=true，替换背景）：云端换底及边缘净化后回传，
+ *    端上保留处理分辨率，只加预览水印并导出高清图。
  *  - 透明底 PNG（老后端）：端上按 alpha 自行换底合成（保留的历史链路）
  *    后两类的端上处理顺序（换深色底时全开，白底自动全部跳过）：
  *      cleanGhostAlpha → computeWallMask(原始数据) → decontaminateEdge → processHair
@@ -32,7 +32,7 @@
  * 隐私：只有云端一条通道，每次制作会上传两份图 ——
  *      ① **完整原图**（等比缩放后的 JPEG）：仅用于微信内容安全检测（mediaCheckAsync），
  *         检测通过后才继续处理；
- *      ② 证件照裁剪工作图：上传至腾讯云做人像分割/提亮后回传。
+ *      ② 证件照裁剪工作图：上传至腾讯云做人像分割后回传。
  */
 
 const matting = require('./matting');
@@ -60,9 +60,9 @@ const Q_ITER = 7;
 const STEPS = [
   { key: 'crop', seq: 1, label: '人脸检测 · 智能裁剪' },
   { key: 'seccheck', seq: 2, label: '内容安全检测' },
-  { key: 'matting', seq: 3, label: '云端抠图 · 换底美颜' },
+  { key: 'matting', seq: 3, label: '云端抠图 · 换底' },
   { key: 'compose', seq: 4, label: '换底合成' },
-  { key: 'size', seq: 5, label: '按尺寸导出' },
+  { key: 'size', seq: 5, label: '高清导出' },
 ];
 
 /** key → 步骤条目，供流程日志取序号与名称 */
@@ -313,7 +313,7 @@ function buildComposite(croppedPath, mask, maskWidth, maskHeight, outW, outH, bg
 /**
  * 成品图铺满画布（云端成品图路径）
  * 像素、换底、边缘净化都已在云端完成，这里只把成品图放到离屏画布上，
- * 供后续「加水印预览」与「按规格体积导出高清版」两条出口复用同一块画布。
+ * 供后续「加水印预览」与「高清导出」复用同一块画布。
  * 尺寸不一致时按比例铺满（正常情况两者相同，零缩放）。
  */
 function canvasFromImage(imgPath, outW, outH) {
@@ -1064,10 +1064,8 @@ function cloudMatting(req, cloudSegment, cloudPrecheck) {
           secChecked,
         }));
       }
-      // 后端未返回成品图（老版本）：退回「透明底 PNG + 端上换底」链路
-      return base64ToTempFile(res.image, 'png')
-        .then(maskFromPng)
-        .then((m) => Object.assign(m, { beautyApplied, secChecked }));
+      // 不静默退回低分辨率旧链路，否则用户保存时会得到看似高清的模糊图。
+      throw new Error('云端未返回高清成品，请稍后重试');
     });
 }
 
@@ -1146,7 +1144,7 @@ function makeIdPhoto(opts) {
           if (r.alphaOnly) {
             // 只替换背景：云端只回 alpha，换底在端上完成（流量 10~30KB 级）
             metrics.push({ k: '云端回传', v: 'alpha 灰度图（端上换底）' });
-          } else {
+          } else if (r.beautyApplied || r.beautySkippedReason) {
             metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : (r.beautySkippedReason || '未生效') });
           }
         }
@@ -1178,7 +1176,7 @@ function makeIdPhoto(opts) {
       //   ① 上一步：端上本地按证件照规格构图裁剪（仅生成本地工作图，不上传）
       //   ② 完整原图（未裁剪）单独上传并等待微信内容安全检测结果
       //   ③ 检测通过后领取一次性凭证，再上传较高清的裁剪工作图
-      //   ④ 服务端消费凭证后才把裁剪图交给腾讯云 BDA 做抠图/提亮
+      //   ④ 服务端消费凭证后才把裁剪图交给腾讯云 BDA 做抠图
       // 所以「内容安全检测」必须排在「抠图」之前 —— 这正是后端内部的执行顺序。
       step('seccheck');
       return cloudMatting(
@@ -1206,23 +1204,16 @@ function makeIdPhoto(opts) {
       // 合成干净的画布（无水印）；水印在导出阶段按版本叠加
       const wm = o.watermark === undefined ? '登科喵证件照 · 预览' : o.watermark;
       if (ctx0.finishedPath) {
-        // 云端成品图：美白像素、换底、边缘净化都已在后端完成，
-        // 端上不再触碰像素（这正是历史 bug 的根源：端上只读 alpha、像素用本地图，
-        // 云端美白的像素永远进不了成片）
+        // 云端成品图已完成换底和边缘净化，端上保持其处理分辨率。
         const previewSize = ctx0.processingSize || { width: outW, height: outH };
-        return Promise.all([
-          canvasFromImage(ctx0.finishedPath, outW, outH),
-          canvasFromImage(ctx0.finishedPath, previewSize.width, previewSize.height),
-        ]).then(([canvas, previewCanvas]) => {
+        return canvasFromImage(ctx0.finishedPath, previewSize.width, previewSize.height).then((canvas) => {
           removeTempFile(ctx0.finishedPath);
-          sharpenCanvas(canvas, outW, outH);
           metrics.push({ k: '成品合成', v: '云端完成（含换底 / 边缘净化）' });
-          metrics.push({ k: '清晰预览', v: `${previewSize.width}×${previewSize.height}` });
+          metrics.push({ k: '高清成片', v: `${previewSize.width}×${previewSize.height}` });
           return Object.assign(ctx0, {
             canvas,
-            previewCanvas,
-            previewWidth: previewSize.width,
-            previewHeight: previewSize.height,
+            exportWidth: previewSize.width,
+            exportHeight: previewSize.height,
             wm,
           });
         });
@@ -1250,36 +1241,26 @@ function makeIdPhoto(opts) {
     })
     .then((ctx0) => {
       step('size');
-      // ① 高清无水印版：按规格体积二分（消耗权益后保存的就是它）
-      return exportUnderSize(ctx0.canvas, outW, outH, spec).then((out) => {
-        metrics.push({ k: '高清导出', v: `${out.kb} KB（质量 ${(out.quality * 100).toFixed(0)}%，无水印）` });
-        // ② 结果页优先展示云端处理分辨率，避免把 295×413 放大后误判为成片模糊。
-        //    正式保存仍使用严格按规格和体积导出的 out.path。
-        const drawPreview = () => {
-          const canvas = ctx0.previewCanvas || ctx0.canvas;
-          const width = ctx0.previewWidth || outW;
-          const height = ctx0.previewHeight || outH;
-          const clean = ctx0.previewCanvas
-            ? exportCanvas(canvas, width, height, 0.95)
-            : Promise.resolve(out.path);
-          return clean.then((cleanPreviewPath) => {
-            if (!ctx0.wm) return { cleanPreviewPath, previewPath: cleanPreviewPath };
-            drawWatermark(canvas.getContext('2d'), width, height, ctx0.wm);
-            return exportCanvas(canvas, width, height, 0.90)
-              .then((previewPath) => ({ cleanPreviewPath, previewPath }));
-          });
-        };
-        return drawPreview().then(({ cleanPreviewPath, previewPath }) => {
+      const width = ctx0.exportWidth || outW;
+      const height = ctx0.exportHeight || outH;
+      // 无水印高清图和带水印预览来自同一画布；不再缩到报名像素或按 KB 压缩。
+      return exportCanvas(ctx0.canvas, width, height, 0.95).then((cleanPath) => {
+        const kb = matting.fileSizeKB(cleanPath);
+        metrics.push({ k: '高清导出', v: `${width}×${height} · ${kb} KB（无水印）` });
+        let preview = Promise.resolve(cleanPath);
+        if (ctx0.wm) {
+          drawWatermark(ctx0.canvas.getContext('2d'), width, height, ctx0.wm);
+          preview = exportCanvas(ctx0.canvas, width, height, 0.90);
+        }
+        return preview.then((previewPath) => {
           metrics.push({ k: '总计', v: `${Date.now() - t0} ms` });
           return {
-            path: out.path,          // 高清无水印（消耗权益后保存）
-            cleanPreviewPath,        // 高分辨率无水印预览（备案模式展示）
+            path: cleanPath,         // 保存的唯一成片：高清、无水印
+            cleanPreviewPath: cleanPath,
             previewPath,             // 带水印预览（结果页展示 / 降级保存）
-            hdPx: [ctx0.previewWidth || outW, ctx0.previewHeight || outH],
-            kb: out.kb,
-            quality: out.quality,
-            underMin: out.underMin,
-            px: [outW, outH],
+            kb,
+            quality: 0.95,
+            px: [width, height],
             bgHex: o.bgHex,
             faceFound: !!ctx0.fd.face,
             faceCostMs: ctx0.fd.costMs,

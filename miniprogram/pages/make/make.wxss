@@ -13,19 +13,11 @@
   margin: 0;
 }
 
-/* 规格参数保持短值右对齐；来源说明独占一行，避免括号被挤到下一行。 */
+/* 构图参数保持短值右对齐。 */
 .spec-value {
   font-weight: 600;
   color: var(--c-text);
   font-variant-numeric: tabular-nums;
-}
-
-.spec-note {
-  margin: -2rpx 0 4rpx 156rpx;
-  text-align: right;
-  font-size: 22rpx;
-  line-height: 1.5;
-  color: var(--c-text-3);
 }
 
 /* ---------- 底色选择 ---------- */

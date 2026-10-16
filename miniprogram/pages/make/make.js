@@ -14,7 +14,7 @@ const STEPS = pipeline.STEPS;
  * v0.5.0 去掉「考试」维度后，原来挂在每个考试上的 notes 没了归属，
  * 但注意事项是真实有用的（报名照被驳回最常见的原因就是戴眼镜、遮眉眼耳、美颜过度）。
  * 这里保留各考试原文里重复出现的**共性条款**，属于通用要求、不涉及某个考试的特定规格。
- * 尺寸特有的部分由 size.sizeNote 单独展示。
+ * 各平台的像素和文件体积要求可能不同，成片只按选中的构图比例导出高清图。
  */
 const SHOOT_NOTES = [
   '近 6 个月内正面、免冠、彩色头像',
@@ -23,22 +23,6 @@ const SHOOT_NOTES = [
   '头发不得遮挡眉毛、眼睛、耳朵',
   '不得美颜、特效、翻拍，不得 PS 修改人像特征',
 ];
-
-function sizeLimitText(size) {
-  if (size.sizeRule === 'range') return `${size.minSizeKB}–${size.maxSizeKB} KB`;
-  if (size.sizeRule === 'max') {
-    return size.maxSizeKB >= 1024 ? `≤ ${size.maxSizeKB / 1024} MB` : `≤ ${size.maxSizeKB} KB`;
-  }
-  return '以提交平台要求为准';
-}
-
-function sizeRequirementNote(size) {
-  const note = String(size.sizeNote || '');
-  const bracket = note.match(/[（(](.*?)[）)]/);
-  const commaAt = note.indexOf('，');
-  const text = bracket ? bracket[1] : commaAt >= 0 ? note.slice(commaAt + 1) : '';
-  return text.replace(/交管\s*12123/g, '交管 12123').trim();
-}
 
 Page({
   data: {
@@ -49,7 +33,7 @@ Page({
     // 底色滑动高亮块（与首页一致，位置由 JS 实测）
     bgSlider: 'opacity: 0',
 
-    // 出片只有一条通道：云端精修（腾讯云 BDA 人像分割 + 面部轻度提亮）。
+    // 出片只有一条通道：云端人像分割与换底，默认不做面部美化以保留真实肤色。
     // 端上 MODNet 已彻底摘掉（不再预下载 25MB 模型）—— 它既不再参与出片，
     // 又会因模型下载失败把「选照片」卡死。云端不可用时明确提示，不做本地降级。
     // 如需恢复「只替换背景」，把 run() 里 cloudSegment 的 beautify 传 false 并加
@@ -85,8 +69,6 @@ Page({
     const camFrameStyle = `width:${frameW}rpx;height:${frameH}rpx;left:${Math.round((750 - frameW) / 2)}rpx;top:24%;`;
     this.setData({
       size,
-      sizeLimit: sizeLimitText(size),
-      sizeRequirementNote: sizeRequirementNote(size),
       sizeUsage: specs.sizeUsage(size),
       bgOptions,
       bgIndex: found < 0 ? 0 : found,
@@ -256,7 +238,7 @@ Page({
         imgPath,
         sizeSpec: this.data.size,
         bgHex: bg.hex,
-        cloudSegment: (b64, extra) => api.cloudSegment(b64, true, extra),
+        cloudSegment: (b64, extra) => api.cloudSegment(b64, false, extra),
         cloudPrecheck: (b64) => api.precheckPhoto(b64),
         // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {

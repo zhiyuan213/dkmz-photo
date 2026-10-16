@@ -231,22 +231,11 @@ function getBackground(id) {
   return BACKGROUNDS[id] || BACKGROUNDS.white;
 }
 
-/** 尺寸摘要一句话，用于选择卡片：像素 · 体积 */
-/**
- * 尺寸摘要一行文案。
- * @param {object} size 尺寸项
- * @param {boolean} [compact] 紧凑模式：省略毫米尺寸（首页卡片窄，毫米属次要信息，制作页仍会展示）
- */
-function sizeSummary(size, compact) {
-  const px = `${size.px[0]}×${size.px[1]}`;
-  let vol = '';
-  if (size.sizeRule === 'max') {
-    vol = `≤${size.maxSizeKB >= 1024 ? size.maxSizeKB / 1024 + 'M' : size.maxSizeKB + 'K'}`;
-  } else if (size.sizeRule === 'range') {
-    vol = `${size.minSizeKB}~${size.maxSizeKB}K`;
-  }
-  const mm = !compact && Array.isArray(size.mm) ? ` · ${size.mm[0]}×${size.mm[1]}mm` : '';
-  return `${px}${mm} · ${vol}`;
+/** 首页只说明构图用途；内置像素用于计算宽高比，不作为导出规格。 */
+function sizeSummary(size) {
+  return Array.isArray(size.mm)
+    ? `${size.mm[0]}×${size.mm[1]}mm 构图 · 高清导出`
+    : '按比例构图 · 高清导出';
 }
 
 /** 场景标注一句话（卡片副标题） */

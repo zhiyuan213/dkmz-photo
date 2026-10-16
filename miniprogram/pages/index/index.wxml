@@ -43,7 +43,8 @@
 
   <!-- 尺寸：所有尺寸两列平铺，副标题是该尺寸的适用场景标注 -->
   <view class="card">
-    <view class="card-title">选择尺寸</view>
+    <view class="card-title">选择构图</view>
+    <view class="hint">按选中比例高清出片；报名上传前请核对平台要求。</view>
     <view class="size-grid">
       <!-- 滑动高亮块：位置由 JS 实测卡片得到，横竖都能滑（样式全局唯一） -->
       <view class="slide-hl" style="{{sizeSlider}}"></view>
@@ -60,7 +61,7 @@
         <view class="size-name">{{item.name}}</view>
         <view class="size-summary">{{item.summary}}</view>
         <!-- 适用场景：所有卡都显示（蓝色标注行） -->
-        <view class="size-usage">{{item.usage}}</view>
+        <view class="size-usage">参考：{{item.usage}}</view>
       </view>
     </view>
 

@@ -3,13 +3,13 @@
   <!-- 预览：一屏内可见的尺寸 + 关键信息 -->
   <view class="card preview-card">
     <image class="preview" src="{{src}}" mode="widthFix" bindtap="onPreview" />
-    <view class="preview-cap">高清{{size.name}}预览 · {{bgName}}</view>
-    <view class="preview-note" wx:if="{{hdPx}}">保存两张：报名版 {{px}}（{{kb}}KB）和高清版 {{hdPx}}；报名请用报名版。</view>
+    <view class="preview-cap">高清{{size.name}} · {{bgName}}</view>
+    <view class="preview-note">按所选构图比例高清保存；报名上传前请核对平台要求。</view>
   </view>
 
-  <!-- 规格检查：单行紧凑排布，一屏看完 -->
+  <!-- 只展示实际成片信息，不宣称符合任何平台的固定像素要求 -->
   <view class="card">
-    <view class="card-title">规格检查</view>
+    <view class="card-title">照片信息</view>
     <view class="check" wx:for="{{checks}}" wx:key="k">
       <text class="check-icon {{item.warn ? 'warn' : item.ok ? 'ok' : 'bad'}}">{{item.warn ? '⚠' : item.ok ? '✓' : '✗'}}</text>
       <text class="check-k">{{item.k}}</text>
@@ -59,7 +59,7 @@
     <button class="btn ghost" bindtap="onHome" hover-class="btn-pressed">返回首页</button>
     <button class="btn ghost" bindtap="onRemake" hover-class="btn-pressed">重新制作</button>
     <button class="btn primary" bindtap="onSave" disabled="{{saving || saved}}" hover-class="btn-pressed">
-      {{saved ? (savedPreview ? '预览已保存' : '两张已保存') : saving ? '保存中…' : savedSpec ? '继续保存高清版' : '保存两张照片'}}
+      {{saved ? (savedPreview ? '预览已保存' : '高清照片已保存') : saving ? '保存中…' : '保存高清照片'}}
     </button>
   </view>
 

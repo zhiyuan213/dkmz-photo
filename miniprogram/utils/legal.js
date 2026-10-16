@@ -7,7 +7,7 @@
 
 module.exports = {
   APP_NAME: '登科喵证件照',
-  UPDATED_AT: '2026-10-15',
+  UPDATED_AT: '2026-10-16',
 
   CONTACT_EMAIL: '13428961230@163.com',
 
