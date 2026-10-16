@@ -1275,6 +1275,7 @@ function makeIdPhoto(opts) {
             path: out.path,          // 高清无水印（消耗权益后保存）
             cleanPreviewPath,        // 高分辨率无水印预览（备案模式展示）
             previewPath,             // 带水印预览（结果页展示 / 降级保存）
+            hdPx: [ctx0.previewWidth || outW, ctx0.previewHeight || outH],
             kb: out.kb,
             quality: out.quality,
             underMin: out.underMin,

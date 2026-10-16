@@ -24,6 +24,10 @@ Page(config.withConfig({
     meta: specs.META,
     saving: false,
     saved: false,
+    savedPreview: false,
+    savedSpec: false,
+    savedHD: false,
+    hdPx: '',
     reviewMode: config.isReviewMode(),
     /**
      * 权益概览（云端可用时异步拉取）。
@@ -81,6 +85,7 @@ Page(config.withConfig({
         : r.previewPath || r.path,
       kb: r.kb,
       px: `${r.px[0]}×${r.px[1]}`,
+      hdPx: r.hdPx ? `${r.hdPx[0]}×${r.hdPx[1]}` : '',
       quality: Math.round(r.quality * 100),
       faceFound: r.faceFound,
       metrics: r.metrics,
@@ -140,16 +145,21 @@ Page(config.withConfig({
     if (this.data.saving || this.data.saved) return;
     const r = this._result || {};
     const previewPath = r.previewPath || r.path;
-    const cleanPath = r.path;
-    const save = (p) => this.saveToAlbum(p || previewPath);
-    // 备案模式：不校验权益、不消耗额度，直接保存高清无水印图
+    const savePreview = () => this.saveToAlbum(previewPath);
+    // 备案模式：不校验权益、不消耗额度，直接保存两种无水印版本。
     if (config.isReviewMode()) {
-      save(cleanPath);
+      this._exportUnlocked = true;
+      this.saveVersions();
+      return;
+    }
+    // 本页已经完成权益校验后，保存失败重试无需再次请求或消耗额度。
+    if (this._exportUnlocked) {
+      this.saveVersions();
       return;
     }
     if (!api.isCloudEnabled()) {
       console.log('[photo][result] 云端未启用，跳过权益校验直接保存预览版');
-      save();
+      savePreview();
       return;
     }
     if (!this._clientNo) {
@@ -159,7 +169,6 @@ Page(config.withConfig({
     api
       .consumeExport(this._clientNo, this.data.size ? this.data.size.id : '', this.specOk !== false)
       .then((res) => {
-        this.setData({ saving: false });
         console.log('[photo][result] 导出校验结果', res && res.ok, res && res.source, res && res.remaining);
         if (res && res.ok) {
           // 消耗来源分开提示：让用户知道自己花掉的是哪一份
@@ -171,10 +180,12 @@ Page(config.withConfig({
             wx.showToast({ title: '会员权益已使用', icon: 'none' });
           }
           this.syncEntitlement(res);
-          // 权益校验通过 → 保存高清无水印版
-          save(cleanPath);
+          // 一次权益解锁同一张照片的报名版与高清留存版。
+          this._exportUnlocked = true;
+          this.saveVersions();
           return;
         }
+        this.setData({ saving: false });
         if (res && res.code === 'QUOTA_EXHAUSTED') {
           this.showQuotaExhausted();
           return;
@@ -184,15 +195,62 @@ Page(config.withConfig({
           return;
         }
         // 其他未明确的拒绝：降级保存预览版，不让用户白做
-        save();
+        savePreview();
       })
       .catch((err) => {
         // 云端异常不让用户白做：先保存，日志留痕
         console.warn('[photo][result] 权益校验失败，降级直接保存', err);
         this.setData({ saving: false });
-        wx.showToast({ title: '网络异常，已保存预览版', icon: 'none' });
-        save();
+        wx.showToast({ title: '网络异常，将保存预览版', icon: 'none' });
+        savePreview();
       });
+  },
+
+  /** 先保存符合报名规格的照片，再保存高分辨率留存照；失败可续存未完成的一张。 */
+  saveVersions() {
+    const r = this._result || {};
+    const specPath = r.path;
+    const hdPath = r.cleanPreviewPath;
+    if (!specPath || !hdPath) {
+      wx.showToast({ title: '照片文件已失效，请重新制作', icon: 'none' });
+      this.setData({ saving: false });
+      return;
+    }
+    this.setData({ saving: true });
+    const save = (path) => new Promise((resolve, reject) => {
+      wx.saveImageToPhotosAlbum({ filePath: path, success: resolve, fail: reject });
+    });
+    let chain = Promise.resolve();
+    if (!this.data.savedSpec) {
+      chain = chain.then(() => save(specPath)).then(() => this.setData({ savedSpec: true }));
+    }
+    if (!this.data.savedHD) {
+      chain = chain.then(() => hdPath === specPath ? null : save(hdPath))
+        .then(() => this.setData({ savedHD: true }));
+    }
+    chain.then(() => {
+      this.setData({ saving: false, saved: true });
+      wx.showToast({ title: hdPath === specPath ? '照片已保存' : '两张照片已保存', icon: 'success' });
+    }).catch((e) => {
+      this.setData({ saving: false });
+      const msg = (e && e.errMsg) || '';
+      if (msg.includes('auth')) {
+        wx.showModal({
+          title: '需要相册权限', content: '请在设置中允许保存到相册', confirmText: '去设置',
+          success: (res) => { if (res.confirm) wx.openSetting(); },
+        });
+      } else if (!msg.includes('cancel')) {
+        if (this.data.savedSpec) {
+          wx.showModal({
+            title: '高清版保存失败',
+            content: '报名版已保存。再次点击“继续保存高清版”即可续存，不会重复扣除次数。',
+            showCancel: false,
+          });
+        } else {
+          wx.showToast({ title: '报名版保存失败，请重试', icon: 'none' });
+        }
+      }
+    });
   },
 
   /** 用消耗接口回传的最新权益覆盖界面数字（省一次请求） */
@@ -236,7 +294,7 @@ Page(config.withConfig({
     wx.saveImageToPhotosAlbum({
       filePath: filePath || this.data.src,
       success: () => {
-        this.setData({ saved: true });
+        this.setData({ saved: true, savedPreview: true });
         wx.showToast({ title: '已保存到相册', icon: 'success' });
       },
       fail: (e) => {

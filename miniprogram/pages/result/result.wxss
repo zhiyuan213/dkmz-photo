@@ -28,6 +28,14 @@
   color: var(--c-text-2);
 }
 
+.preview-note {
+  margin-top: 4rpx;
+  font-size: 21rpx;
+  line-height: 1.4;
+  color: var(--c-text-2);
+  text-align: center;
+}
+
 /* ---------- 规格检查（一行一条：✓ 项目 …… 值） ---------- */
 
 .check {

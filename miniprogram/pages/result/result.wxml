@@ -3,7 +3,8 @@
   <!-- 预览：一屏内可见的尺寸 + 关键信息 -->
   <view class="card preview-card">
     <image class="preview" src="{{src}}" mode="widthFix" bindtap="onPreview" />
-    <view class="preview-cap">{{size.name}} · {{px}} · {{kb}}KB · {{bgName}}</view>
+    <view class="preview-cap">高清{{size.name}}预览 · {{bgName}}</view>
+    <view class="preview-note" wx:if="{{hdPx}}">保存两张：报名版 {{px}}（{{kb}}KB）和高清版 {{hdPx}}；报名请用报名版。</view>
   </view>
 
   <!-- 规格检查：单行紧凑排布，一屏看完 -->
@@ -58,7 +59,7 @@
     <button class="btn ghost" bindtap="onHome" hover-class="btn-pressed">返回首页</button>
     <button class="btn ghost" bindtap="onRemake" hover-class="btn-pressed">重新制作</button>
     <button class="btn primary" bindtap="onSave" disabled="{{saving || saved}}" hover-class="btn-pressed">
-      {{saved ? '已保存' : saving ? '保存中…' : '保存到相册'}}
+      {{saved ? (savedPreview ? '预览已保存' : '两张已保存') : saving ? '保存中…' : savedSpec ? '继续保存高清版' : '保存两张照片'}}
     </button>
   </view>
 
