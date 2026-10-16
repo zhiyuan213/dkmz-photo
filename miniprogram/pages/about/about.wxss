@@ -1,37 +1,33 @@
-/* 关于与开源声明：继承 doc.wxss 的正文规范，仅补充顶部品牌区 */
+@import "../../styles/doc.wxss";
 
-.about-hero {
-  display: flex;
-  align-items: center;
-  margin-bottom: 24rpx;
-}
-
-/* 品牌徽标：与主色调一致的主蓝渐变（原红色改为蓝调） */
+/* Follow app.wxss page/card spacing, six-level typography and capsule buttons. */
+.about-page { padding-bottom: calc(32rpx + env(safe-area-inset-bottom)); }
+.about-brand { display: flex; align-items: center; }
+.about-brand-copy { flex: 1; min-width: 0; }
 .about-badge {
-  flex-shrink: 0;
-  width: 88rpx;
-  height: 88rpx;
-  margin-right: 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 22rpx;
-  background: linear-gradient(135deg, #3d8bff, #0d60f8);
-  color: #fff;
-  font-size: 32rpx;
-  font-weight: 700;
-  box-shadow: 0 6rpx 16rpx rgba(13, 96, 248, 0.24);
+  flex-shrink: 0; width: 88rpx; height: 88rpx; margin-right: 20rpx;
+  display: flex; align-items: center; justify-content: center; border-radius: 22rpx;
+  background: linear-gradient(135deg, var(--c-blue-l), var(--c-blue));
+  color: #fff; font-size: 34rpx; font-weight: 700;
 }
-
-.about-name {
-  font-size: 34rpx;
-  font-weight: 700;
-  line-height: 1.4;
-  color: var(--c-text);
-}
-
-.about-ver {
-  margin-top: 6rpx;
-  font-size: 24rpx;
-  color: var(--c-text-3);
-}
+.about-name { font-size: 34rpx; font-weight: 700; line-height: 1.4; color: var(--c-text); }
+.about-ver { margin-top: 6rpx; font-size: 24rpx; line-height: 1.6; color: var(--c-text-3); }
+.about-tagline { font-size: 28rpx; line-height: 1.75; color: var(--c-text-2); margin-top: 20rpx; }
+.about-flow { display: flex; flex-wrap: wrap; margin: 12rpx -6rpx -6rpx; }
+.about-flow text { font-size: 24rpx; line-height: 1.6; color: var(--c-blue); background: var(--c-blue-soft); border-radius: 16rpx; padding: 8rpx 14rpx; margin: 6rpx; }
+.about-page .doc-p { margin-bottom: 12rpx; overflow-wrap: break-word; }
+.about-page .doc-p:last-child { margin-bottom: 0; }
+.about-page .doc-note { margin-top: 12rpx; padding: 14rpx 16rpx; }
+.about-spec-source { margin-top: 14rpx; }
+.about-component { padding: 20rpx 0 8rpx; border-top: 1rpx solid var(--c-line); margin-top: 16rpx; }
+.about-component-head { display: flex; align-items: center; flex-wrap: wrap; }
+.about-component-name { font-size: 28rpx; font-weight: 600; line-height: 1.6; color: var(--c-text); margin-bottom: 8rpx; }
+.about-license { font-size: 22rpx; line-height: 1.6; padding: 4rpx 12rpx; margin: 0 0 8rpx 14rpx; border-radius: 16rpx; background: var(--c-blue-soft); color: var(--c-blue); }
+.about-copyright { font-size: 24rpx; line-height: 1.7; color: var(--c-text-2); margin-top: 16rpx; }
+.about-contact { display: flex; flex-wrap: wrap; align-items: center; margin-top: 16rpx; }
+.about-email { flex: 1; min-width: 280rpx; font-size: 26rpx; line-height: 1.7; color: var(--c-blue); word-break: break-all; padding: 8rpx 12rpx 8rpx 0; }
+.about-links { padding: 0 20rpx; }
+.about-link { display: flex; align-items: center; justify-content: space-between; min-height: 88rpx; font-size: 28rpx; line-height: 1.6; color: var(--c-text); }
+.about-link + .about-link { border-top: 1rpx solid var(--c-line); }
+.about-arrow { font-size: 30rpx; color: var(--c-text-3); margin-left: 16rpx; }
+.about-link-pressed { background: var(--c-blue-tint); }

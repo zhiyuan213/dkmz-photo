@@ -1,30 +1,50 @@
-<view class="doc">
-  <view class="about-hero">
-    <view class="about-badge">照</view>
-    <view>
-      <view class="about-name">{{appName}}</view>
-      <view class="about-ver">版本 {{appVersion}}　·　更新于 {{updatedAt}}</view>
+<view class="page about-page">
+  <view class="card about-hero">
+    <view class="about-brand">
+      <view class="about-badge">照</view>
+      <view class="about-brand-copy">
+        <view class="about-name">{{appName}}</view>
+        <view class="about-ver">版本 {{appVersion}}</view>
+        <view class="about-ver">更新于 {{updatedAt}}</view>
+      </view>
     </view>
+    <view class="about-tagline">帮你轻松制作高清证件照</view>
+    <view class="about-flow"><text>选构图</text><text>自动裁剪</text><text>一键换底</text><text>高清导出</text></view>
   </view>
-
-  <view class="doc-p">帮你 3 分钟做出符合报名要求的证件照：选考试 → 自动裁剪构图 → 一键换底色 → 按规格导出。制作时照片会加密上传腾讯云，用于人像分割、面部保守提亮与按所选底色合成，结果回传后在你的手机本地加水印并导出，<text class="doc-strong">我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理</text>。</view>
-
-  <view class="doc-h">规格库</view>
-  <view class="doc-p">{{specSource}}版本 v{{meta.version}}，更新于 {{meta.updatedAt}}，数据来源为各考试主管部门、报考点或院校发布的公开公告。</view>
-  <view class="doc-note">{{meta.disclaimer}}</view>
-
-  <view class="doc-h">开源声明</view>
-  <view class="doc-p">本产品使用了以下开源组件，谨向作者与社区致谢：</view>
-  <view class="doc-li">1. <text class="doc-strong">{{modelName}}</text>：许可协议 {{modelLicense}}。来源：{{modelSource}}。<text class="doc-strong">出片流程不使用端上模型</text>——人像分割统一由云端服务完成，正式功能不会把模型文件下载到你的手机上；相关代码仅在开发者自检页面中可选使用。</view>
-  <view class="doc-li">2. 设备能力：微信小程序提供的 VisionKit 人脸检测能力，用于在你的手机本机定位人脸、完成构图裁剪。</view>
-  <view class="doc-note">以上开源组件的版权归各自作者所有，其许可协议全文可在相应开源项目仓库中查看。若你是权利人并认为本产品的使用方式不妥，请通过下方方式联系我们。</view>
-
-  <view class="doc-h">联系我们</view>
-  <view class="doc-p">如对本产品有任何建议、问题，或涉及个人信息、版权的诉求，可联系：{{contact}}</view>
-
-  <view class="doc-links">
-    <text class="doc-link" bindtap="onOpenPrivacy">用户隐私保护政策</text>
-    <text class="doc-sep">|</text>
-    <text class="doc-link" bindtap="onOpenAgreement">用户协议</text>
+  <view class="card">
+    <view class="card-title">照片如何处理</view>
+    <view class="doc-p">照片经安全检测后，云端完成人像分割、自然修饰和换底。轻度减弱头发反光与局部泛红，保留面部特征；美肤不可用时保留原肤质。结果回传后，在手机本地生成预览并高清导出。报名上传前请核对平台的照片要求。</view>
+    <view class="doc-note">我们不将照片写入磁盘或数据库；为减少重复制作，会按用户在服务器内存中短时缓存处理结果，到期自动清理。</view>
+  </view>
+  <view class="card">
+    <view class="card-title">规格库</view>
+    <view class="kv"><text>数据来源</text><text class="v">{{specSource}}</text></view>
+    <view class="kv"><text>当前版本</text><text class="v">v{{meta.version}}</text></view>
+    <view class="kv"><text>更新日期</text><text class="v">{{meta.updatedAt}}</text></view>
+    <view class="doc-p about-spec-source">规格数据来源为各考试主管部门、报考点或院校发布的公开公告。</view>
+    <view class="doc-note">{{meta.disclaimer}}</view>
+  </view>
+  <view class="card">
+    <view class="card-title">开源声明</view>
+    <view class="doc-p">本产品使用了以下开源组件及设备能力，谨向作者与社区致谢。</view>
+    <view class="about-component">
+      <view class="about-component-head"><text class="about-component-name">{{modelName}}</text><text class="about-license">{{modelLicense}}</text></view>
+      <view class="doc-p">来源：{{modelSource}}。</view>
+      <view class="doc-p"><text class="doc-strong">出片流程不使用端上模型。</text>人像分割统一由云端服务完成，正式功能不会把模型文件下载到你的手机上；相关代码仅在开发者自检页面中可选使用。</view>
+    </view>
+    <view class="about-component">
+      <view class="about-component-name">微信 VisionKit</view>
+      <view class="doc-p">使用微信小程序提供的人脸检测能力，在你的手机本机定位人脸、完成构图裁剪。</view>
+    </view>
+    <view class="about-copyright">以上开源组件的版权归各自作者所有，其许可协议全文可在相应开源项目仓库中查看。若你是权利人并认为本产品的使用方式不妥，请通过下方方式联系我们。</view>
+  </view>
+  <view class="card">
+    <view class="card-title">联系我们</view>
+    <view class="doc-p">如对本产品有任何建议、问题，或涉及个人信息、版权的诉求，欢迎通过邮箱联系。</view>
+    <view class="about-contact"><text class="about-email" selectable="true">{{contact}}</text><button class="btn ghost sm" bindtap="onCopyContact" hover-class="btn-pressed">复制邮箱</button></view>
+  </view>
+  <view class="card about-links">
+    <view class="about-link" bindtap="onOpenPrivacy" hover-class="about-link-pressed"><text>用户隐私保护政策</text><text class="about-arrow">›</text></view>
+    <view class="about-link" bindtap="onOpenAgreement" hover-class="about-link-pressed"><text>用户协议</text><text class="about-arrow">›</text></view>
   </view>
 </view>
