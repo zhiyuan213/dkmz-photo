@@ -33,7 +33,7 @@ class ProcessingAdmissionTest {
         when(users.verify(anyString(), nullable(String.class))).thenReturn("real-user");
         when(limiter.tryAcquire("real-user")).thenReturn("最近24小时已达30次");
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
-                new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck),
+                new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck, mock(PhotoCheckTicketService.class)),
                 new IdPhotoController(segment, processing, users, limiter, secCheck)).build();
         String request = "{\"image\":\"photo\",\"loginCode\":\"code\"}";
         mvc.perform(post("/api/photo/segment").contentType("application/json").content(request))
@@ -60,10 +60,10 @@ class ProcessingAdmissionTest {
                 .when(secCheck).checkOrThrow(any(byte[].class), any(), any(), any());
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
-                new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck)).build();
+                new PhotoSegmentController(segment, processing, users, mock(PortraitCompositeService.class), limiter, secCheck, mock(PhotoCheckTicketService.class))).build();
         // image 是 base64（此处内容无所谓，检测已 mock 为抛违规）
         mvc.perform(post("/api/photo/segment").contentType("application/json")
-                        .content("{\"image\":\"cGhvdG8=\",\"loginCode\":\"code\"}"))
+                        .content("{\"image\":\"cGhvdG8=\",\"checkImage\":\"cGhvdG8=\",\"loginCode\":\"code\"}"))
                 .andExpect(jsonPath("$.ok").value(false))
                 .andExpect(jsonPath("$.code").value("RISKY_CONTENT"));
         verifyNoInteractions(processing);
@@ -94,21 +94,52 @@ class ProcessingAdmissionTest {
         assertEquals("完整原图", source.getValue());
     }
 
-    /** 端上漏传 checkImage 时退化为裁剪图，但必须留痕（source 标注 + WARN），便于发现版本不同步 */
+    /** 端上既无送检图也无过检凭证时，绝不拿裁剪图代替整图送检。 */
     @Test
-    void segmentFallsBackToCroppedPictureButMarksItInAuditLog() throws Exception {
+    void segmentRejectsMissingWholePictureAndTicket() throws Exception {
         WxSecCheckService secCheck = mock(WxSecCheckService.class);
         MockMvc mvc = admissionMvc(secCheck);
         String cropped = Base64.getEncoder().encodeToString(new byte[] { 9, 9, 9 });
 
         mvc.perform(post("/api/photo/segment").contentType("application/json")
-                .content("{\"image\":\"" + cropped + "\",\"loginCode\":\"code\"}"));
+                .content("{\"image\":\"" + cropped + "\",\"loginCode\":\"code\"}"))
+                .andExpect(jsonPath("$.code").value("SEC_CHECK_REQUIRED"));
+        verify(secCheck, never()).checkOrThrow(any(), any(), any(), any());
+    }
 
-        ArgumentCaptor<byte[]> checked = ArgumentCaptor.forClass(byte[].class);
-        ArgumentCaptor<String> source = ArgumentCaptor.forClass(String.class);
-        verify(secCheck).checkOrThrow(checked.capture(), any(), source.capture(), any());
-        assertArrayEquals(new byte[] { 9, 9, 9 }, checked.getValue());
-        assertTrue(source.getValue().contains("缺 checkImage"), source.getValue());
+    /** 整图检测通过后签发一次性凭证；制作端凭该凭证通过检测阶段。 */
+    @Test
+    void precheckIssuesTicketAndSegmentConsumesItOnce() throws Exception {
+        WxSecCheckService secCheck = mock(WxSecCheckService.class);
+        PhotoCheckTicketService tickets = mock(PhotoCheckTicketService.class);
+        when(tickets.allowPrecheck("real-user")).thenReturn(true);
+        when(tickets.issue("real-user")).thenReturn("ticket");
+        when(tickets.consume("ticket", "real-user")).thenReturn(true, false);
+        BdaSegmentService segment = mock(BdaSegmentService.class);
+        PortraitProcessingService processing = mock(PortraitProcessingService.class);
+        PhotoUserVerifier users = mock(PhotoUserVerifier.class);
+        SegmentRateLimiter limiter = mock(SegmentRateLimiter.class);
+        when(users.verify(anyString(), nullable(String.class))).thenReturn("real-user");
+        when(segment.isEnabled()).thenReturn(true);
+        when(secCheck.isEnabled()).thenReturn(true);
+        when(processing.process(anyString(), anyString(), anyBoolean(), any()))
+                .thenReturn(new PortraitProcessingService.Result("cG5n", "cG5n", false, null));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new PhotoSegmentController(segment, processing, users,
+                mock(PortraitCompositeService.class), limiter, secCheck, tickets)).build();
+        String image = Base64.getEncoder().encodeToString(new byte[] { 7, 7, 7 });
+        String response = mvc.perform(post("/api/photo/segment/precheck").contentType("application/json")
+                .content("{\"checkImage\":\"" + image + "\",\"loginCode\":\"code\"}"))
+                .andExpect(jsonPath("$.ok").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String ticket = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response).get("checkTicket").asText();
+        verify(secCheck).checkOrThrow(eq(new byte[] { 7, 7, 7 }), eq("real-user"), eq("完整原图"), any());
+        String request = "{\"image\":\"" + image + "\",\"checkTicket\":\"" + ticket
+                + "\",\"loginCode\":\"code\"}";
+        mvc.perform(post("/api/photo/segment").contentType("application/json").content(request))
+                .andExpect(jsonPath("$.ok").value(true));
+        mvc.perform(post("/api/photo/segment").contentType("application/json").content(request))
+                .andExpect(jsonPath("$.code").value("SEC_CHECK_REQUIRED"));
+        verify(processing, times(1)).process(anyString(), anyString(), anyBoolean(), any());
     }
 
     /**
@@ -135,7 +166,7 @@ class ProcessingAdmissionTest {
 
         MockMvc mvc = MockMvcBuilders.standaloneSetup(
                 new PhotoSegmentController(segment, processing, users,
-                        mock(PortraitCompositeService.class), limiter, secCheck)).build();
+                        mock(PortraitCompositeService.class), limiter, secCheck, mock(PhotoCheckTicketService.class))).build();
         String b64 = Base64.getEncoder().encodeToString(new byte[] { 1, 2, 3 });
 
         Logger logger = (Logger) LoggerFactory.getLogger(PhotoSegmentController.class);
@@ -181,6 +212,6 @@ class ProcessingAdmissionTest {
         when(secCheck.isEnabled()).thenReturn(true);
         return MockMvcBuilders.standaloneSetup(
                 new PhotoSegmentController(segment, mock(PortraitProcessingService.class), users,
-                        mock(PortraitCompositeService.class), limiter, secCheck)).build();
+                        mock(PortraitCompositeService.class), limiter, secCheck, mock(PhotoCheckTicketService.class))).build();
     }
 }

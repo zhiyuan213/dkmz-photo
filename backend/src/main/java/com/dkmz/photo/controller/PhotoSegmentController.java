@@ -4,6 +4,7 @@ import com.dkmz.photo.service.BdaSegmentService;
 import com.dkmz.photo.service.PortraitProcessingService;
 import com.dkmz.photo.service.PortraitCompositeService;
 import com.dkmz.photo.service.PhotoUserVerifier;
+import com.dkmz.photo.service.PhotoCheckTicketService;
 import com.dkmz.photo.service.WxSecCheckService;
 import com.dkmz.photo.support.AlphaExtractor;
 import com.dkmz.photo.support.BackgroundColorEstimator;
@@ -36,12 +37,67 @@ public class PhotoSegmentController {
     private final PortraitCompositeService compositeService;
     private final SegmentRateLimiter rateLimiter;
     private final WxSecCheckService secCheck;
+    private final PhotoCheckTicketService checkTickets;
 
     public PhotoSegmentController(BdaSegmentService segmentService, PortraitProcessingService processing,
             PhotoUserVerifier users, PortraitCompositeService compositeService, SegmentRateLimiter rateLimiter,
-            WxSecCheckService secCheck) {
+            WxSecCheckService secCheck, PhotoCheckTicketService checkTickets) {
         this.segmentService = segmentService; this.processing = processing; this.users = users;
         this.compositeService = compositeService; this.rateLimiter = rateLimiter; this.secCheck = secCheck;
+        this.checkTickets = checkTickets;
+    }
+
+    /** 第一段：整张原图单独送检；检测通过才签发绑定当前用户的一次性凭证。 */
+    @PostMapping("/segment/precheck")
+    public Map<String, Object> precheck(@RequestBody(required = false) Map<String, Object> body,
+                                         @RequestHeader(value = "X-WX-FROM-OPENID", required = false) String fromOpenid,
+                                         @RequestHeader(value = "X-WX-OPENID", required = false) String openid) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String user;
+        try {
+            Object code = body == null ? null : body.get("loginCode");
+            user = users.verify(code instanceof String ? (String) code : null,
+                    OpenidSupport.resolve(fromOpenid, openid, null));
+        } catch (Exception e) {
+            out.put("ok", false); out.put("code", "LOGIN_REQUIRED"); out.put("msg", "请重新进入后重试");
+            return out;
+        }
+        try {
+            if (!checkTickets.allowPrecheck(user)) {
+                out.put("ok", false); out.put("code", "RATE_LIMITED");
+                out.put("msg", "操作过于频繁，请稍后再试");
+                return out;
+            }
+        } catch (Exception e) {
+            log.warn("预检限流存储不可用 user={}", userTag(user));
+            out.put("ok", false); out.put("code", "SEC_CHECK_UNAVAILABLE");
+            out.put("msg", "内容安全检测暂不可用，请稍后重试");
+            return out;
+        }
+        Object raw = body == null ? null : body.get("checkImage");
+        if (!(raw instanceof String image) || image.isBlank()) {
+            out.put("ok", false); out.put("code", "BAD_REQUEST"); out.put("msg", "缺少完整原图送检数据");
+            return out;
+        }
+        try {
+            if (image.length() > 140_000) throw new IllegalArgumentException("送检图尺寸不合适");
+            byte[] bytes = decodeImage(image);
+            if (bytes.length == 0 || bytes.length > 100_000) throw new IllegalArgumentException("送检图尺寸不合适");
+            if (secCheck.isEnabled()) {
+                secCheck.checkOrThrow(bytes, user, "完整原图", FlowLog.tag(FlowLog.SEC_CHECK));
+            }
+            out.put("ok", true);
+            out.put("checkTicket", checkTickets.issue(user));
+            return out;
+        } catch (WxSecCheckService.RiskyContentException e) {
+            out.put("ok", false); out.put("code", "RISKY_CONTENT");
+            out.put("msg", "图片内容涉嫌违规，请更换照片后重试");
+        } catch (Exception e) {
+            log.warn("预检失败 user={} 原因={}", userTag(user), Logs.safe(e.toString()));
+            out.put("ok", false); out.put("code", "SEC_CHECK_UNAVAILABLE");
+            out.put("msg", "内容安全检测暂不可用，请稍后重试");
+        }
+        return out;
     }
 
     @PostMapping("/segment")
@@ -94,6 +150,7 @@ public class PhotoSegmentController {
         // 绝不能拿 image（已按证件照构图裁好的工作图）去送检——裁剪会把头部以下的
         // 违规内容裁掉，微信只能判 pass（实测一张裸照裁剪后过检）。
         String checkImage = body == null ? null : (String) body.get("checkImage");
+        String checkTicket = body == null ? null : (String) body.get("checkTicket");
         boolean wantBeauty = body != null && Boolean.TRUE.equals(body.get("beauty"));
         // bgHex 存在 ⇒ 成品图模式（后端连换底一起做，端上直接用）
         String bgHex = body == null ? null : (String) body.get("bgHex");
@@ -112,7 +169,7 @@ public class PhotoSegmentController {
 
         // ---- 3/6 内容安全检测（审核整改项：UGC 图片必须先过微信 mediaCheckAsync）----
         // fail-closed：检测通道异常 / 结果超时未回 → 拒绝处理，绝不放过风险图。
-        // 送检素材必须是**完整原图**（checkImage），不是裁剪后的工作图：
+        // 送检素材必须是**完整原图**（预检凭证对应的 checkImage，或旧版请求内的 checkImage），不是裁剪后的工作图：
         // 证件照构图只保留头肩，裁剪图会"洗掉"落在框外的违规内容（旧实现的实际漏检原因）。
         // openid 用 verify() 得到的真实 openid（mediaCheckAsync 必填），不用可能为空的请求头。
         // 本阶段的汇总行（含接口地址/结果/判定）由 WxSecCheckService 直接带序号输出，
@@ -120,15 +177,21 @@ public class PhotoSegmentController {
         boolean secChecked = false;
         if (secCheck.isEnabled()) {
             try {
-                boolean hasWholePicture = checkImage != null && !checkImage.isEmpty();
-                if (!hasWholePicture) {
-                    // 端上未上传完整原图 ⇒ 只能退而检测裁剪工作图，裁剪框外的内容检不到。
-                    // 生产端上必须传 checkImage（前后端同批发布）；这里留 WARN 便于发现版本不同步。
-                    log.warn("segment 未收到 checkImage（完整原图），退化为检测裁剪工作图 user={}", userTag(user));
+                if (checkTicket != null && !checkTicket.isBlank()) {
+                    if (!checkTickets.consume(checkTicket, user)) {
+                        out.put("ok", false); out.put("code", "SEC_CHECK_REQUIRED");
+                        out.put("msg", "照片检测已过期，请重新制作");
+                        return out;
+                    }
+                    log.info("{} | user={} | 结果=已通过（一次性凭证）", FlowLog.tag(FlowLog.SEC_CHECK), userTag(user));
+                } else if (checkImage != null && !checkImage.isEmpty()) {
+                    // 兼容旧版小程序：同一请求内先检测完整原图，再做云端抠图。
+                    secCheck.checkOrThrow(decodeImage(checkImage), user, "完整原图", FlowLog.tag(FlowLog.SEC_CHECK));
+                } else {
+                    out.put("ok", false); out.put("code", "SEC_CHECK_REQUIRED");
+                    out.put("msg", "缺少完整原图安全检测，请重新制作");
+                    return out;
                 }
-                secCheck.checkOrThrow(decodeImage(hasWholePicture ? checkImage : image), user,
-                        hasWholePicture ? "完整原图" : "裁剪工作图(缺 checkImage!)",
-                        FlowLog.tag(FlowLog.SEC_CHECK));
                 secChecked = true;
             } catch (WxSecCheckService.RiskyContentException e) {
                 // 拦截 / 不可用的汇总行已由 WxSecCheckService 带序号输出（含 label 与判定），此处只回响应

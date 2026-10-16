@@ -151,3 +151,21 @@ CREATE TABLE IF NOT EXISTS photo_processing_request (
   INDEX idx_processing_time(created_at),
   INDEX idx_processing_user_time(user_hash, created_at)
 ) ENGINE=InnoDB;
+
+-- 完整原图过检凭证：只存用户与随机凭证摘要，不存图片；多实例原子消费。
+CREATE TABLE IF NOT EXISTS photo_check_ticket (
+  token_hash CHAR(64) NOT NULL PRIMARY KEY,
+  user_hash CHAR(64) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  consumed_at DATETIME(3) NULL,
+  INDEX idx_photo_check_expires(expires_at)
+) ENGINE=InnoDB;
+
+-- 预检单独限流，防止反复调用微信内容安全接口而不进入制作。
+CREATE TABLE IF NOT EXISTS photo_check_request (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  user_hash CHAR(64) NOT NULL,
+  created_at DATETIME(3) NOT NULL,
+  INDEX idx_photo_check_user_time(user_hash, created_at),
+  INDEX idx_photo_check_time(created_at)
+) ENGINE=InnoDB;

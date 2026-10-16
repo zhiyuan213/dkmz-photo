@@ -279,17 +279,17 @@ body：`{ "clientNo": "E1759...", "specId": "one-inch", "specOk": true }`
 
 ## 三B、云端精修（腾讯云 BDA 人像分割）
 
-### POST /api/photo/segment
-body：`{ "image": "<base64 或 dataURL>", "checkImage": "<完整原图 base64>", "beauty": false }`
+### POST /api/photo/segment/precheck
+body：`{ "checkImage": "<整幅原图等比缩放的 JPEG base64>", "loginCode": "<wx.login code>" }`
 
-- `image`：base64 ≤5M，分辨率 <2000×2000（超限服务端自动压缩到长边 1920）
-- `checkImage`：**内容安全检测专用的完整原图**（端上整幅等比缩放后的 JPEG base64，
-  **不裁剪**）。⚠️ 不能用 `image` 代替：`image` 是按证件照构图裁好的工作图，
-  裁剪会把头部以下的违规内容裁掉，微信只能判 `pass`（实测一张裸照裁剪后过检）。
-  缺失时后端退化为检测 `image` 并留 WARN —— 那是降级路径，不要依赖。
-  ⚠️ **体积受限**：小程序端走 CallContainer（文本体上限 100KiB），
-  `image` + `checkImage` 的 base64 **合计必须 ≤95KB**，由端上按「总预算 − 裁剪图」
-  动态分配（当前 64KB + 28KB）。走公网域名（`wx.request`）时无此限制。
+先用**完整原图**执行微信内容安全检测。通过后返回 `{ ok:true, checkTicket:"<一次性凭证>" }`；凭证绑定当前用户、两分钟内有效且只能用一次。违规或检测通道故障不签发凭证。送检图独占一次请求，当前上限 88 KiB base64。
+发布时先部署支持预检接口及新表的后端，再上传使用两段流程的小程序版本。
+
+### POST /api/photo/segment
+body：`{ "image": "<裁剪工作图 base64>", "checkTicket": "<已过检的一次性凭证>", "loginCode": "<新的 wx.login code>", "beauty": true, "bgHex": "#FFFFFF" }`
+
+- `checkTicket`：预检通过后服务端签发，用户绑定、短期有效、一次性消费。缺少凭证时，仅兼容旧版客户端在**同一请求内**附带的完整原图 `checkImage`；两者都没有则返回 `SEC_CHECK_REQUIRED`，不会拿裁剪图充当整图送检。
+- `image`：base64 ≤5M，分辨率 <2000×2000（超限服务端自动压缩到长边 1920）。小程序云调用下独占第二次请求的体积预算，当前上限 92 KiB base64。
 - `beauty`：可选，`true` 时先做保守美肤（肤色提亮+磨皮，作用区域 = 自定义分割
   `SegmentCustomizedPortraitPic` 的 **Face-only** mask，不含五官/头发）再抠图；
   需后端 `BDAB_BEAUTY_ENABLED=true`，美肤失败自动退化为纯抠图，不阻断
@@ -311,10 +311,10 @@ body：`{ "image": "<base64 或 dataURL>", "checkImage": "<完整原图 base64>"
 2021-09-01 停止维护、当前不可用**（固定报 errcode 47001），不要改回去。现用异步接口
 `security.mediaCheckAsync`（`/wxa/media_check_async`）。
 
-⚠️ **送检素材必须是完整原图**（`checkImage`，整幅等比缩放、不裁剪）。
+⚠️ **送检素材必须是完整原图**（预检请求的 `checkImage`，整幅等比缩放、不裁剪）。
 证件照构图只保留头肩：拿裁剪图去送检，等于先把自己框外的违规内容裁掉再送审 ——
-实测一张裸照裁剪后 `suggest=pass`。日志里 `图片=完整原图 240KB 3024x4032`
-这一栏就是审计证据，「尺寸」一栏能直接看出有没有误送裁剪工作图（长边 960/1280）。
+实测一张裸照裁剪后 `suggest=pass`。日志的图片来源与尺寸可用来核对送检素材；
+当前小程序先将整幅原图等比缩放至最长边不超过 1024 像素，再单独送检。
 
 ⚠️ **端上两条 CallContainer 硬限制**（官方《微信云托管开发常识》，**踩过一次坑**）：
 | 限制 | 原文 | 踩坑表现 |
@@ -324,7 +324,7 @@ body：`{ "image": "<base64 或 dataURL>", "checkImage": "<完整原图 base64>"
 
 体积预算由 `tools/check_payload_budget.js` **静态校验**（改任何体积常量后必跑）：
 ```
-node tools/check_payload_budget.js      # 断言 最坏合计 < 95KB 守门 < 100KiB 硬上限
+node tools/check_payload_budget.js      # 分别断言送检、抠图请求 < 95KB 守门 < 100KiB 硬上限
 ```
 
 流程（对上层保持同步语义）：
@@ -337,7 +337,7 @@ node tools/check_payload_budget.js      # 断言 最坏合计 < 95KB 守门 < 10
 3. 微信异步检测完，把结果推送到 mp 后台配置的「消息推送」地址
    （事件 `wxa_media_check`，30 分钟内到达）→ `POST /api/photo/pay/notify` 按 Event 分派给
    `WxSecCheckService.acceptPush`（与虚拟支付推送同一个 URL）
-4. 服务在原地轮询等结果，默认最长 `SEC_CHECK_WAIT_MS=10000` 毫秒
+4. 服务在原地轮询等结果，默认最长 `SEC_CHECK_WAIT_MS=6000` 毫秒；通过后才签发一次性凭证
 
 结果语义（`suggest` 依次从 `result` → 顶层 → `detail[0]` 取，`result` 是官方的综合结果）：
 `pass` 放行 / `risky` 拦截 / `review` 也按拦截处理。

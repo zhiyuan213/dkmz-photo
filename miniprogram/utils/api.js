@@ -89,6 +89,8 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
           if (body && typeof body === 'object') {
             console.log('[photo][api]', method + ' ' + addr, '->', JSON.stringify(path === '/api/photo/segment'
               ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
+              : path === '/api/photo/segment/precheck'
+              ? { ok: body.ok, code: body.code, hasTicket: !!body.checkTicket }
               : body).slice(0, 300));
             resolve(body);
           } else {
@@ -122,6 +124,8 @@ function call(path, method = 'GET', data = {}, timeoutMs = TIMEOUT) {
           if (body && typeof body === 'object') {
             console.log('[photo][api]', method + ' ' + addr, '->', JSON.stringify(path === '/api/photo/segment'
               ? { ok: body.ok, code: body.code, beautyApplied: body.beautyApplied, hasImage: !!body.image, hasAlpha: !!body.alpha }
+              : path === '/api/photo/segment/precheck'
+              ? { ok: body.ok, code: body.code, hasTicket: !!body.checkTicket }
               : body).slice(0, 300));
             resolve(body);
           } else {
@@ -227,9 +231,9 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
   const alphaOnly = !!(extra && extra.alphaOnly);
   // alphaOnly 时不带 bgHex：带了后端就会走成品图模式（回 JPEG，失去 alpha 的流量收益）
   const body = { image: imageBase64, beauty: alphaOnly ? false : !!beautify };
-  // 内容安全检测的送检图：**完整原图**（未裁剪）。缺了后端只能退检裁剪工作图，
-  // 而证件照构图会裁掉头部以下 ⇒ 落在裁剪框外的违规内容会漏检（实测裸照过检）。
+  // 兼容旧版客户端在同一请求内送检完整原图；新版使用预检签发的一次性凭证。
   if (extra && extra.checkImage) body.checkImage = extra.checkImage;
+  if (extra && extra.checkTicket) body.checkTicket = extra.checkTicket;
   if (alphaOnly) {
     body.alphaOnly = true;
   } else if (extra && extra.bgHex) {
@@ -260,6 +264,22 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
   });
 }
 
+/** 完整原图单独送检；返回仅当前用户可用的一次性凭证。 */
+function precheckPhoto(checkImage) {
+  return new Promise((resolve, reject) => {
+    wx.login({
+      success: (res) => res && res.code ? resolve(res.code) : reject({ msg: '获取登录凭证失败，请重试' }),
+      fail: () => reject({ msg: '登录失败，请稍后重试' }),
+    });
+  }).then((loginCode) => {
+    const body = { checkImage, loginCode };
+    if (JSON.stringify(body).length > CALL_BODY_LIMIT) {
+      return Promise.reject({ code: 'PAYLOAD_TOO_LARGE', msg: '送检照片过大，请换一张照片重试' });
+    }
+    return call('/api/photo/segment/precheck', 'POST', body, CLOUD_SEGMENT_TIMEOUT);
+  });
+}
+
 // ============================================================
 // 统一能力探测：给页面判断「要不要显示购买入口」
 // ============================================================
@@ -280,6 +300,7 @@ module.exports = {
   fetchEntitlement,
   consumeExport,
   cloudSegment,
+  precheckPhoto,
   isCloudEnabled,
   ENV_ID,
   SERVICE,

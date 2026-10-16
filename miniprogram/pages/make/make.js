@@ -257,6 +257,7 @@ Page({
         sizeSpec: this.data.size,
         bgHex: bg.hex,
         cloudSegment: (b64, extra) => api.cloudSegment(b64, true, extra),
+        cloudPrecheck: (b64) => api.precheckPhoto(b64),
         // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {
           this.data.steps.forEach((s) => {

@@ -869,26 +869,19 @@ function maskFromGrayPng(pngPath) {
   });
 }
 
-/**
- * 工作图优先长边 960，受原始裁剪分辨率、最多 3 倍采样和请求体积限制。
- * 超出 90KB base64 时先尝试 95/90/85% 质量，再逐档减小尺寸。
- * 云端处理后才缩到最终报名规格，避免在小图上直接分割与磨皮。
- */
-// 质量档要多留几级：裁剪图上限从 90KB 压到 64KB（要给送检原图腾预算），
-// 最末尺寸档（640 长边）在 0.85 质量下仍可能超限，必须能继续降质量而不是直接失败。
+/** 工作图优先长边 960；先调整 JPEG 质量，再逐档降低尺寸。 */
 const CLOUD_UPLOAD_QUALITY_LADDER = [0.95, 0.9, 0.85, 0.75, 0.65, 0.55];
 
 // ⚠️ CallContainer 对**文本**请求体有 100KiB 硬上限。官方《微信云托管开发常识》原文：
 //    「CallContainer 请求大小限制 100K，请求中不建议包含图片，可通过对象存储处理。」
 //    《调用云托管服务》亦写明「请求大小限制 100KiB（文本 100KiB，二进制 20MiB）」。
-// 我们一次请求要装**两张** base64（裁剪工作图 + 检测用完整原图），所以必须自己把
-// 总量压在 100KiB 之下；一旦超出，请求在链路层就被拒（前端只看到
+// 现在完整原图送检和裁剪工作图分两次请求；两次分别受 100KiB 限制。一旦超出，链路层就拒绝（前端只看到
 // `cloud.callContainer:fail -600001`，**后端根本收不到请求**，日志里什么也没有）——
 // 2026-10-15 就是因为送检原图未计体积预算而踩这个坑。
 const CLOUD_BODY_BUDGET = 95 * 1024;    // 整个 body（含 JSON 外壳）的目标上限
-const CLOUD_BODY_RESERVE = 512;         // 预留给 JSON 外壳 / loginCode / boomId 等字段
-/** 裁剪工作图 base64 上限（送腾讯云 BDA 抠图，直接影响出片质量，优先保它） */
-const CLOUD_PAYLOAD_LIMIT = 64 * 1024;
+const CLOUD_BODY_RESERVE = 1024;        // 预留给 JSON 外壳 / loginCode / 凭证等字段
+/** 裁剪工作图独占第二次请求的预算，送腾讯云 BDA 抠图。 */
+const CLOUD_PAYLOAD_LIMIT = 92 * 1024;
 
 // -------------------------------------- 内容安全检测送检图（完整原图）
 
@@ -902,16 +895,12 @@ const CLOUD_PAYLOAD_LIMIT = 64 * 1024;
  * 尺寸/质量可以降（控制体积），但**覆盖范围不能降**：宁可用小一号的整幅图，
  * 也绝不能用大一号的裁剪图。
  */
-// 起始档不设 1024：在 28KB 级预算下它注定超限，白做一次「重编码 + 落临时文件 +
-// 读回 base64」（每次约 100~300ms）。质量档跨度取大，也是为了少试几轮。
-const CHECK_SIZE_LADDER = [768, 640, 512];
-const CHECK_QUALITY_LADDER = [0.72, 0.45, 0.35];
+const CHECK_SIZE_LADDER = [1024, 768, 640, 512];
+const CHECK_QUALITY_LADDER = [0.78, 0.62, 0.45, 0.35];
 /**
- * 送检图 base64 上限 —— 它必须与裁剪工作图**合计**留在 CallContainer 的
- * 100KiB 文本限制内，所以这个值不是独立的：cloudMatting 会按「总预算 − 裁剪图」
- * 动态算出一个更小的上限传进来（见其 `checkLimit`）。
+ * 送检图独占第一次请求的预算，保留足够像素用于内容安全识别。
  */
-const CHECK_PAYLOAD_LIMIT = 28 * 1024;
+const CHECK_PAYLOAD_LIMIT = 88 * 1024;
 
 /** 整幅原图等比缩放到 w×h（不裁剪、不留白）后返回画布 */
 function wholeImageCanvas(imgPath, w, h) {
@@ -935,8 +924,7 @@ function wholeImageCanvas(imgPath, w, h) {
  * 失败直接上抛：送检是这个链路的必要环节，生成不了送检图就不能继续
  *（与后端 fail-closed 同一语义），绝不静默退回「送裁剪图」。
  *
- * @param {number} [limit] 本次的体积上限（字节）。**不能省**——送检图与裁剪工作图
- *   共用同一个请求体，上限由 cloudMatting 按「100KiB − 裁剪图」动态算出后传入。
+ * @param {number} [limit] 本次送检请求的 base64 体积上限（字节）。
  */
 function checkImageBase64(imgPath, limit) {
   const cap = limit > 0 ? limit : CHECK_PAYLOAD_LIMIT;
@@ -984,8 +972,8 @@ function outOfSourceTopRows(box, outH) {
 /**
  * 云端精修主流程。
  *
- * extra 含 alphaOnly / bgHex / outTop，外加内容安全检测专用的 checkImage
- *（**完整原图**的 base64，未裁剪；后端只拿它送微信检测，不参与抠图）。
+ * 先用 cloudPrecheck 单独提交**完整原图**，取得一次性过检凭证；
+ * 再用 cloudSegment 提交裁剪工作图。两次请求都独立受 100KiB 文本体积限制。
  *
  * cloudSegment(base64, extra) 需 resolve：
  *   - 只替换背景（alphaOnly）：{ ok:true, alpha, width, height }
@@ -998,9 +986,12 @@ function outOfSourceTopRows(box, outH) {
  * @returns {Promise<{finishedPath?:string, mask?:Float32Array, maskWidth?:number,
  *                    maskHeight?:number, beautyApplied:boolean, alphaOnly?:boolean}>}
  */
-function cloudMatting(req, cloudSegment) {
+function cloudMatting(req, cloudSegment, cloudPrecheck) {
   const { imgPath, box, outW, outH, bgHex, alphaOnly } = req;
   const sizes = cloudProcessingSizes(box, outW, outH);
+  if (typeof cloudPrecheck !== 'function') {
+    return Promise.reject(new Error('内容安全检测服务未连接'));
+  }
   const shoot = (sizeIndex, qualityIndex) => {
     const size = sizes[sizeIndex];
     const q = CLOUD_UPLOAD_QUALITY_LADDER[qualityIndex];
@@ -1020,33 +1011,32 @@ function cloudMatting(req, cloudSegment) {
       });
   };
   let upload;
-  // 送检图（完整原图）必须**串行**准备：两份图都要解码整张原图，
-  // 同时持有两份解码位图（4032×3024 ≈ 48MB）在低端机上有 OOM 风险，
-  // 串行只多花约 300ms，换稳定性。
-  return shoot(0, 0)
-    .then((prepared) => {
+  // 两张图串行准备，避免低端机同时解码两份完整原图。检测通过才准备并上传工作图。
+  return checkImageBase64(imgPath, CHECK_PAYLOAD_LIMIT)
+    .then((checkImage) => {
+      if (checkImage.length > CHECK_PAYLOAD_LIMIT) throw new Error('完整原图送检数据过大，请更换照片');
+      console.log('[photo][流程] ' + STEP_BY_KEY.seccheck.seq + '/' + STEPS.length
+        + ' 送检图=' + Math.round(checkImage.length / 1024) + 'KB');
+      return cloudPrecheck(checkImage);
+    })
+    .then((res) => {
+      if (!res || !res.ok || !res.checkTicket) {
+        const err = new Error((res && res.msg) || '内容安全检测未通过');
+        err.code = res && res.code;
+        throw err;
+      }
+      return shoot(0, 0).then((prepared) => ({ prepared, checkTicket: res.checkTicket }));
+    })
+    .then(({ prepared, checkTicket }) => {
       upload = prepared;
-      // CallContainer 的 100KiB 文本上限是**两张图共享**的：裁剪工作图先定（它决定
-      // 出片质量，优先保），剩余预算才给送检原图 —— 不是各自一个固定上限。
-      const checkLimit = Math.max(
-        8 * 1024,
-        Math.min(CHECK_PAYLOAD_LIMIT, CLOUD_BODY_BUDGET - CLOUD_BODY_RESERVE - prepared.b64.length)
-      );
-      return checkImageBase64(imgPath, checkLimit).then((checkImage) => {
-        const extra = alphaOnly
-          ? { alphaOnly: true }
-          : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
-        // 后端拿它去送微信检测；没有它后端只能退检裁剪图，裁剪框外的违规内容会漏检
-        extra.checkImage = checkImage;
-        // 体积必须可见：callContainer 超限只回一个 -600001，后端与容器日志里毫无痕迹，
-        // 所以把三个值打进真机 console —— 下次一眼就能判断是不是又撞了 100KiB。
-        const kb = (n) => Math.round(n / 1024);
-        console.log('[photo][流程] ' + STEP_BY_KEY.seccheck.seq + '/' + STEPS.length
-          + ' 上传体积 裁剪图=' + kb(prepared.b64.length) + 'KB 送检图='
-          + kb(checkImage.length) + 'KB 合计=' + kb(prepared.b64.length + checkImage.length)
-          + 'KB（CallContainer 文本上限 100KB，本地预算 ' + kb(CLOUD_BODY_BUDGET) + 'KB）');
-        return cloudSegment(prepared.b64, extra);
-      });
+      const extra = alphaOnly
+        ? { alphaOnly: true }
+        : { bgHex, outTop: outOfSourceTopRows(box, prepared.size.height) };
+      extra.checkTicket = checkTicket;
+      console.log('[photo][流程] ' + STEP_BY_KEY.matting.seq + '/' + STEPS.length
+        + ' 抠图工作图=' + Math.round(prepared.b64.length / 1024)
+        + 'KB（单次预算 ' + Math.round(CLOUD_BODY_BUDGET / 1024) + 'KB）');
+      return cloudSegment(prepared.b64, extra);
     })
     .then((res) => {
       if (!res || !res.ok || (!res.image && !res.alpha)) {
@@ -1186,9 +1176,9 @@ function makeIdPhoto(opts) {
       }
       // 真实时序（必须与后端内部顺序、结果页步骤顺序三者一致）：
       //   ① 上一步：端上本地按证件照规格构图裁剪（仅生成本地工作图，不上传）
-      //   ② 本步：完整原图（未裁剪）与裁剪工作图一并上传本服务
-      //   ③ 服务端**先**用完整原图跑内容安全检测，等微信推送结果
-      //   ④ 只有检测通过，服务端才把裁剪图交给腾讯云 BDA 做抠图/提亮
+      //   ② 完整原图（未裁剪）单独上传并等待微信内容安全检测结果
+      //   ③ 检测通过后领取一次性凭证，再上传较高清的裁剪工作图
+      //   ④ 服务端消费凭证后才把裁剪图交给腾讯云 BDA 做抠图/提亮
       // 所以「内容安全检测」必须排在「抠图」之前 —— 这正是后端内部的执行顺序。
       step('seccheck');
       return cloudMatting(
@@ -1202,7 +1192,8 @@ function makeIdPhoto(opts) {
           // 只替换背景（不美颜）⇒ 只要 alpha，端上换底；美颜则走后端成品图模式
           alphaOnly: !!o.alphaOnly,
         },
-        o.cloudSegment
+        o.cloudSegment,
+        o.cloudPrecheck
       )
         .then((r) => {
           step('matting');
