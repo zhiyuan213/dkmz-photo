@@ -259,7 +259,12 @@
 /* ---------- 主操作 ---------- */
 
 .start-bar {
-  margin-top: 12rpx;
+  /* 上方卡片已有 12rpx 间距，不再叠加容器与按钮的外边距。 */
+  margin-top: 0;
+}
+
+.start-bar .btn {
+  margin-top: 0;
 }
 
 /* 按压态统一在 app.wxss 的 .btn-pressed 定义 */
