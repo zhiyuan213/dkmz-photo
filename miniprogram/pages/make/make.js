@@ -238,7 +238,7 @@ Page({
         imgPath,
         sizeSpec: this.data.size,
         bgHex: bg.hex,
-        cloudSegment: (b64, extra) => api.cloudSegment(b64, false, extra),
+        cloudSegment: (b64, extra) => api.cloudSegment(b64, true, Object.assign({}, extra, { naturalRetouch: true })),
         cloudPrecheck: (b64) => api.precheckPhoto(b64),
         // 固定走「成品图模式」（云端连换底一起做）；不再传 alphaOnly
         onStep: (key) => {

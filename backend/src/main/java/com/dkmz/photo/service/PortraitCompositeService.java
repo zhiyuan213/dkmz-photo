@@ -73,6 +73,7 @@ public class PortraitCompositeService {
                         original.getRGB(0, 0, w, h, null, 0, w), top);
             }
         }
+        NaturalRetouch.hairHighlights(w, h, alpha, rgb, top);
         enhanceNaturalTone(alpha, rgb);
         int[] dst = new int[n];
         for (int i = 0; i < n; i++) {

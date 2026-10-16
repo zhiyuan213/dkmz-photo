@@ -39,6 +39,7 @@ public class IdPhotoBeautyService {
      * PORTRAIT 形象档：社交头像，可看出变化（不建议用于办证）
      */
     public enum Level {
+        NATURAL("natural", 0, 0),
         ID("id", 0.15, 0.20),
         NORMAL("normal", 0.25, 0.30),
         PORTRAIT("portrait", 0.35, 0.40);
@@ -77,6 +78,7 @@ public class IdPhotoBeautyService {
         if (mask == null || mask.length != w * h || level == null) {
             throw new IllegalArgumentException("皮肤 mask 尺寸或美肤档位无效");
         }
+        if (level == Level.NATURAL) return NaturalRetouch.blemishes(src, mask);
 
         // 1. 羽化权重：美白用原 mask，磨皮用腐蚀后的 mask
         float[] whitenWeight = buildFeatherWeight(mask, w, h, FEATHER_WHITEN);

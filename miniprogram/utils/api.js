@@ -231,6 +231,7 @@ function cloudSegment(imageBase64, beautify = false, extra = null) {
   const alphaOnly = !!(extra && extra.alphaOnly);
   // alphaOnly 时不带 bgHex：带了后端就会走成品图模式（回 JPEG，失去 alpha 的流量收益）
   const body = { image: imageBase64, beauty: alphaOnly ? false : !!beautify };
+  if (!alphaOnly && extra && extra.naturalRetouch) body.naturalRetouch = true;
   // 兼容旧版客户端在同一请求内送检完整原图；新版使用预检签发的一次性凭证。
   if (extra && extra.checkImage) body.checkImage = extra.checkImage;
   if (extra && extra.checkTicket) body.checkTicket = extra.checkTicket;

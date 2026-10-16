@@ -47,7 +47,7 @@
       <text class="{{cloudAvailable ? 'ok' : 'bad'}}">{{cloudAvailable ? '已连接' : '未连接'}}</text>
     </view>
     <view class="hint" wx:if="{{!cloudAvailable}}">云端暂不可用：请检查网络后重试。</view>
-    <view class="hint" wx:else>照片将上传腾讯云做人像分割，并按所选底色合成后回传，仅用于生成结果。</view>
+    <view class="hint" wx:else>照片经安全检测后，云端完成人像分割、自然修饰和换底。轻度减弱头发反光与局部泛红，保留面部特征；美肤不可用时保留原肤质。</view>
   </view>
 
   <!-- 拍摄要求：默认折叠，需要时展开（避免把主操作挤出首屏） -->

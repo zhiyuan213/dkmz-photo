@@ -239,7 +239,9 @@ public class PhotoSegmentController {
         }
 
         try {
-            PortraitProcessingService.Result portrait = processing.process(user, image, wantBeauty, null);
+            PortraitProcessingService.Result portrait = processing.process(user, image, wantBeauty,
+                    Boolean.TRUE.equals(body.get("naturalRetouch"))
+                            ? com.dkmz.photo.service.IdPhotoBeautyService.Level.NATURAL : null);
             boolean beautyApplied = portrait.beautyApplied();
             String beautySkippedReason = portrait.beautySkippedReason();
             String input = portrait.input();

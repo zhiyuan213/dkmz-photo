@@ -1146,7 +1146,7 @@ function makeIdPhoto(opts) {
             // 只替换背景：云端只回 alpha，换底在端上完成（流量 10~30KB 级）
             metrics.push({ k: '云端回传', v: 'alpha 灰度图（端上换底）' });
           } else if (r.beautyApplied || r.beautySkippedReason) {
-            metrics.push({ k: '肤色提亮', v: r.beautyApplied ? '已应用' : (r.beautySkippedReason || '未生效') });
+            metrics.push({ k: '局部美肤', v: r.beautyApplied ? '已处理' : (r.beautySkippedReason || '未生效') });
           }
         }
         return {
